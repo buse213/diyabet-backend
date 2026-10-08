@@ -120,4 +120,8 @@ app.post('/profil-guncelle', (req, res) => {
     });
 });
 
-app.listen(3003, () => console.log('📊 Raporlama Servisi 3003 portunda ayakta.'));
+// RENDER İÇİN DİNAMİK PORT VE 0.0.0.0 HOST AYARI
+const PORT = process.env.PORT || 3003;
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`📊 Raporlama Servisi ${PORT} portunda ve 0.0.0.0 hostunda ayakta.`);
+});
