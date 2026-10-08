@@ -8,6 +8,12 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// --- HATA TESPİTİ İÇİN LOGLAMA (Gelen her isteği Render terminaline yazar) ---
+app.use((req, res, next) => {
+    console.log(`📥 Gelen İstek: ${req.method} ${req.url}`);
+    next();
+});
+
 const upload = multer({ storage: multer.memoryStorage() });
 
 // --- RENDER CANLI LİNKLERİ (Ortam değişkenlerinden alınacak) ---
@@ -89,8 +95,8 @@ app.post('/profil-guncelle', async (req, res) => {
     }
 });
 
-// RENDER İÇİN DİNAMİK PORT AYARI
+// RENDER İÇİN DİNAMİK PORT VE 0.0.0.0 HOST AYARI
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 API Gateway ${PORT} portunda aktif. Tüm istekler buradan yönetiliyor.`);
 });
