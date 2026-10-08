@@ -8,10 +8,11 @@ app.use(express.json());
 
 // --- MYSQL VERİTABANI BAĞLANTISI ---
 const db = mysql.createConnection({
-    host: 'localhost',
-    user: 'root',
-    password: '',
-    database: 'diyabet_tez_db'
+    host: process.env.DB_HOST || 'localhost',
+    user: process.env.DB_USER || 'root',
+    password: process.env.DB_PASSWORD || '',
+    database: process.env.DB_NAME || 'diyabet_tez_db',
+    port: process.env.DB_PORT || 3306
 });
 
 db.connect((err) => {
