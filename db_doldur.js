@@ -1,4 +1,5 @@
-const mysql = require('mysql');
+const mysql = require('mysql2');
+require('dotenv').config();
 
 // Kendi veritabanı ayarlarına göre kontrol et (Şifre varsa ekle)
 const db = mysql.createConnection({

@@ -1,31 +1,51 @@
-const mysql = require('mysql');
+const mysql = require('mysql2');
+require('dotenv').config();
 
 const db = mysql.createConnection({
-    host: 'localhost',
-    user: 'root',
-    password: '',
-    database: 'diyabet_tez_db'
+    host: process.env.DB_HOST || 'localhost',
+    user: process.env.DB_USER || 'root',
+    password: process.env.DB_PASSWORD || '',
+    database: process.env.DB_NAME || 'diyabet_tez_db',
+    port: process.env.DB_PORT || 3306
 });
 
 db.connect((err) => {
     if (err) throw err;
-    console.log('MySQL bağlantısı başarılı, tablo oluşturuluyor...');
+    console.log('MySQL bağlantısı başarılı, eksik tablolar kontrol ediliyor...');
 
-    // Geçmiş kayıtlar tablosunu oluşturan SQL sorgusu (Eğer yoksa oluşturur)
-    const query = `
-    CREATE TABLE IF NOT EXISTS gecmis_kayitlar (
+    // 1. Kullanıcılar Tablosu
+    const queryKullanicilar = `
+    CREATE TABLE IF NOT EXISTS kullanicilar (
         id INT AUTO_INCREMENT PRIMARY KEY,
-        tarih DATETIME DEFAULT CURRENT_TIMESTAMP,
-        yemek_ismi VARCHAR(255),
-        tuketilen_gramaj INT,
-        alinan_karbonhidrat FLOAT,
-        olculen_kan_sekeri INT,
-        onerilen_insulin FLOAT
+        ad VARCHAR(255),
+        email VARCHAR(255) UNIQUE,
+        sifre VARCHAR(255),
+        yas INT,
+        kilo FLOAT,
+        diyabet_yili INT,
+        icr FLOAT,
+        isf FLOAT
     )`;
 
-    db.query(query, (err, result) => {
+    // 2. Yemekler Tablosu
+    const queryYemekler = `
+    CREATE TABLE IF NOT EXISTS yemekler (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        ai_etiketi VARCHAR(255),
+        turkce_isim VARCHAR(255),
+        porsiyon_tipi VARCHAR(255),
+        karbonhidrat_miktari FLOAT
+    )`;
+
+    db.query(queryKullanicilar, (err) => {
         if (err) throw err;
-        console.log('Harika! "gecmis_kayitlar" tablosu terminal üzerinden başarıyla oluşturuldu.');
-        process.exit();
+        console.log('"kullanicilar" tablosu hazır.');
+
+        db.query(queryYemekler, (err) => {
+            if (err) throw err;
+            console.log('"yemekler" tablosu hazır.');
+            console.log('Tüm yapılandırma tamamlandı!');
+            process.exit();
+        });
     });
 });
