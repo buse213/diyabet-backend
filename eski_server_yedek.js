@@ -13,9 +13,8 @@ app.use(express.json());
 // Gelen fotoğrafı bellekte tutmak için multer ayarı (Çok hızlıdır!)
 const upload = multer({ storage: multer.memoryStorage() });
 
-// --- GEMINI API KURULUMU ---
-// DİKKAT: Aşağıdaki tırnak içine az önce aldığın API Anahtarını yapıştır!
-const genAI = new GoogleGenerativeAI('process.env.GEMINI_API_KEY');
+
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 // --- MYSQL VERİTABANI BAĞLANTISI (Senin kodun, aynen korundu) ---
 const db = mysql.createConnection({

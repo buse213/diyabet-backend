@@ -8,7 +8,7 @@ app.use(cors());
 app.use(express.json());
 
 const upload = multer({ storage: multer.memoryStorage() });
-const genAI = new GoogleGenerativeAI('process.env.GEMINI_API_KEY');
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 app.post('/isleme', upload.single('file'), async (req, res) => {
     if (!req.file) return res.status(400).json({ hata: 'Lütfen bir fotoğraf gönderin.' });
