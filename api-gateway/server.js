@@ -21,7 +21,8 @@ const IMAGE_SERVICE_URL = process.env.IMAGE_SERVICE_URL || 'http://localhost:300
 const REPORTING_SERVICE_URL = process.env.REPORTING_SERVICE_URL || 'http://localhost:3003';
 
 // 1. YAPAY ZEKA İSTEĞİNİ GÖRÜNTÜ SERVİSİNE İLET (3001)
-app.post('/analiz', upload.single('file'), async (req, res) => {
+// BURASI '/analiz' YERİNE '/isleme' OLARAK DÜZELTİLDİ
+app.post('/isleme', upload.single('file'), async (req, res) => {
     if (!req.file) {
         console.log("❌ HATA: Telefondan dosya gelmedi (req.file boş).");
         return res.status(400).json({ hata: 'Dosya yok' });
@@ -39,7 +40,6 @@ app.post('/analiz', upload.single('file'), async (req, res) => {
         console.log("✅ Görüntü servisinden başarıyla yanıt alındı.");
         res.json(response.data);
     } catch (error) {
-        // İŞTE BURASI BİZE GERÇEK HATAYI SÖYLEYECEK!
         console.error("❌ GÖRÜNTÜ SERVİSİ BAĞLANTI HATASI:", error.message);
         if (error.response) {
             console.error("❌ HATA DETAYI:", error.response.data);
