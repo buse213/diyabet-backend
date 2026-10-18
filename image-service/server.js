@@ -63,7 +63,6 @@ app.post('/isleme', upload.single('file'), async (req, res) => {
                 const predictedIndex = yerelSonuc.class_index;
                 const confidence = yerelSonuc.confidence || 0.0; 
 
-                // İŞTE BURAYI 0.98 OLARAK DEĞİŞTİRDİK
                 const bizimSinirlerdeMi = (predictedIndex >= 0 && predictedIndex < 15);
                 const modelEminMi = (confidence >= 0.98); 
 
@@ -88,7 +87,8 @@ app.post('/isleme', upload.single('file'), async (req, res) => {
                     const fileBuffer = fs.readFileSync(imagePath);
                     if (fs.existsSync(imagePath)) fs.unlinkSync(imagePath);
 
-                const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
+                    // MODEL İSMİ BURADA DÜZELTİLDİ
+                    const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
                     const imageBase64 = fileBuffer.toString("base64");
                     
                     const resimVerisi = {
