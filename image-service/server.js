@@ -61,16 +61,15 @@ app.post('/isleme', upload.single('file'), async (req, res) => {
                 }
 
                 const predictedIndex = yerelSonuc.class_index;
-                const confidence = yerelSonuc.confidence || 0.0; // Varsayılanı 0.0 yaptık ki emin değilse geçmesin
+                const confidence = yerelSonuc.confidence || 0.0; 
 
-                // İŞTE SİHİRLİ DOKUNUŞ BURADA: Hem indeks 0-14 arasında olacak, HEM DE model %75'ten fazla emin olacak!
+                // İŞTE BURAYI 0.98 OLARAK DEĞİŞTİRDİK
                 const bizimSinirlerdeMi = (predictedIndex >= 0 && predictedIndex < 15);
-                const modelEminMi = (confidence >= 0.75); 
+                const modelEminMi = (confidence >= 0.98); 
 
                 console.log(`Yerel Model Tahmini: İndeks ${predictedIndex}, Güven Oranı: %${(confidence * 100).toFixed(2)}`);
 
                 if (bizimSinirlerdeMi && modelEminMi) {
-                    // Yerel model %75'in üzerinde bir güvenle başarıyla tanıdı!
                     if (fs.existsSync(imagePath)) fs.unlinkSync(imagePath);
                     const bulunanYemek = YEREL_BESINLER[predictedIndex];
 
@@ -84,7 +83,6 @@ app.post('/isleme', upload.single('file'), async (req, res) => {
                         }
                     });
                 } else {
-                    // Model 15 sınıf dışındaysa VEYA güven skoru %75'in altındaysa Gemini'a devrediyoruz
                     console.log("2. Aşama: Yerel model yeterince emin olamadı, Gemini Bulut Yapay Zekasına bağlanılıyor...");
                     
                     const fileBuffer = fs.readFileSync(imagePath);
