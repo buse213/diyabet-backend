@@ -64,7 +64,7 @@ app.post('/isleme', upload.single('file'), async (req, res) => {
                 const confidence = yerelSonuc.confidence || 0.0; 
 
                 const bizimSinirlerdeMi = (predictedIndex >= 0 && predictedIndex < 15);
-                const modelEminMi = (confidence >= 0.98); 
+               const modelEminMi = (confidence >= 0.85);
 
                 console.log(`Yerel Model Tahmini: İndeks ${predictedIndex}, Güven Oranı: %${(confidence * 100).toFixed(2)}`);
 
