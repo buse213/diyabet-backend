@@ -88,7 +88,7 @@ app.post('/isleme', upload.single('file'), async (req, res) => {
                     if (fs.existsSync(imagePath)) fs.unlinkSync(imagePath);
 
                     // MODEL İSMİ BURADA DÜZELTİLDİ
-                    const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
+                  const model = genAI.getGenerativeModel({ model: "gemini-pro-vision" });
                     const imageBase64 = fileBuffer.toString("base64");
                     
                     const resimVerisi = {
