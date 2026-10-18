@@ -88,7 +88,7 @@ app.post('/isleme', upload.single('file'), async (req, res) => {
                     if (fs.existsSync(imagePath)) fs.unlinkSync(imagePath);
 
                     // İŞTE BÜTÜN HATAYI ÇÖZECEK O GÜNCEL SATIR BURADA
-                    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+                  const model = genAI.getGenerativeModel({ model: "gemini-3.8-flash" });
                     
                     const imageBase64 = fileBuffer.toString("base64");
                     
