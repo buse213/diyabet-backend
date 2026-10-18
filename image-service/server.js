@@ -88,7 +88,7 @@ app.post('/isleme', upload.single('file'), async (req, res) => {
                     const fileBuffer = fs.readFileSync(imagePath);
                     if (fs.existsSync(imagePath)) fs.unlinkSync(imagePath);
 
-                    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+                const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
                     const imageBase64 = fileBuffer.toString("base64");
                     
                     const resimVerisi = {
