@@ -10,10 +10,11 @@ session = ort.InferenceSession(model_path)
 
 def predict(image_path):
     try:
-        img = Image.open(image_path).resize((224, 224))
+        # Fotoğrafı RGB'ye çevirmeye zorluyoruz (PNG'lerdeki şeffaflık kanalının sistemi çökertmemesi için)
+        img = Image.open(image_path).convert('RGB').resize((224, 224))
         img_data = np.array(img).astype(np.float32) / 255.0
         
-        # Mean & Std normalizasyonu (Anaconda'da ne kullandıysan)
+        # Mean & Std normalizasyonu 
         mean = np.array([0.485, 0.456, 0.406])
         std = np.array([0.229, 0.224, 0.225])
         img_data = (img_data - mean) / std
@@ -24,8 +25,14 @@ def predict(image_path):
         input_name = session.get_inputs()[0].name
         result = session.run(None, {input_name: img_data.astype(np.float32)})
         
-        predicted_class = int(np.argmax(result[0]))
-        confidence = float(np.max(result[0]))
+        # --- İŞTE EKSİK OLAN KISIM: SOFTMAX İŞLEMİ ---
+        # Ham skorları (logits) 0.0 ile 1.0 arasında bir yüzdelik değere çeviriyoruz
+        logits = result[0][0]
+        exp_logits = np.exp(logits - np.max(logits)) # Matematiksel hatayı önlemek için max çıkarılır
+        probabilities = exp_logits / np.sum(exp_logits)
+        
+        predicted_class = int(np.argmax(probabilities))
+        confidence = float(np.max(probabilities)) # Artık tam olarak 0.95 (%95) gibi bir oran dönecek
         
         return {"class_index": predicted_class, "confidence": confidence}
     except Exception as e:

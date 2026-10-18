@@ -40,7 +40,6 @@ app.post('/isleme', upload.single('file'), async (req, res) => {
     try {
         console.log("1. Aşama: Fotoğraf yerel eğittiğiniz ResNet18 ONNX modeline gönderiliyor...");
         
-        // Bura Render için düzeltildi: Sadece "python3" komutu kullanılıyor
         const pythonExecutable = "python3";
         const scriptPath = path.resolve(__dirname, 'predict.py');
 
@@ -57,22 +56,25 @@ app.post('/isleme', upload.single('file'), async (req, res) => {
                 
                 const yerelSonuc = JSON.parse(temizStdout);
                 if (yerelSonuc.error) {
-                    if (fs.existsSync(imagePath)) fs.unlinkSync(yerelSonuc);
+                    if (fs.existsSync(imagePath)) fs.unlinkSync(imagePath);
                     return res.status(500).json({ hata: yerelSonuc.error });
                 }
 
                 const predictedIndex = yerelSonuc.class_index;
-                const confidence = yerelSonuc.confidence || 1.0;
+                const confidence = yerelSonuc.confidence || 0.0; // Varsayılanı 0.0 yaptık ki emin değilse geçmesin
 
-                // Model bu 15 sınıftan birini bildiyse ve indeks aralığındaysa
+                // İŞTE SİHİRLİ DOKUNUŞ BURADA: Hem indeks 0-14 arasında olacak, HEM DE model %75'ten fazla emin olacak!
                 const bizimSinirlerdeMi = (predictedIndex >= 0 && predictedIndex < 15);
+                const modelEminMi = (confidence >= 0.75); 
 
-                if (bizimSinirlerdeMi) {
-                    // Yerel model başarıyla tanıdı!
+                console.log(`Yerel Model Tahmini: İndeks ${predictedIndex}, Güven Oranı: %${(confidence * 100).toFixed(2)}`);
+
+                if (bizimSinirlerdeMi && modelEminMi) {
+                    // Yerel model %75'in üzerinde bir güvenle başarıyla tanıdı!
                     if (fs.existsSync(imagePath)) fs.unlinkSync(imagePath);
                     const bulunanYemek = YEREL_BESINLER[predictedIndex];
 
-                    console.log(`✅ Yerel Model Başarılı: ${bulunanYemek.turkce_isim}`);
+                    console.log(`✅ Yerel Model Başarılı: ${bulunanYemek.turkce_isim} (%${(confidence * 100).toFixed(2)} emin)`);
                     return res.json({
                         durum: 'basarili',
                         kaynak: 'Yerel ResNet18 Model',
@@ -82,8 +84,8 @@ app.post('/isleme', upload.single('file'), async (req, res) => {
                         }
                     });
                 } else {
-                    // 15 yemek sınıfının dışındaysa Gemini API'ye devrediyoruz
-                    console.log("2. Aşama: Yerel model sınıf dışı bıraktı, Gemini Bulut Yapay Zekasına bağlanılıyor...");
+                    // Model 15 sınıf dışındaysa VEYA güven skoru %75'in altındaysa Gemini'a devrediyoruz
+                    console.log("2. Aşama: Yerel model yeterince emin olamadı, Gemini Bulut Yapay Zekasına bağlanılıyor...");
                     
                     const fileBuffer = fs.readFileSync(imagePath);
                     if (fs.existsSync(imagePath)) fs.unlinkSync(imagePath);
