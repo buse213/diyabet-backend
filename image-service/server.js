@@ -40,7 +40,8 @@ app.post('/isleme', upload.single('file'), async (req, res) => {
     try {
         console.log("1. Aşama: Fotoğraf yerel eğittiğiniz ResNet18 ONNX modeline gönderiliyor...");
         
-        const pythonExecutable = "C:\\Users\\buse8\\anaconda3\\envs\\diyabet_tez\\python.exe";
+        // Bura Render için düzeltildi: Sadece "python3" komutu kullanılıyor
+        const pythonExecutable = "python3";
         const scriptPath = path.resolve(__dirname, 'predict.py');
 
         exec(`"${pythonExecutable}" "${scriptPath}" "${imagePath}"`, async (error, stdout, stderr) => {
