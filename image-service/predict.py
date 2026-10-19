@@ -3,9 +3,14 @@ import json
 import onnxruntime as ort
 import numpy as np
 from PIL import Image
+import os
 
-# Modelin yolu
-model_path = "diyabet_modeli_resnet18.onnx"
+# predict.py'nin bulunduğu klasörün yolunu otomatik bul
+base_dir = os.path.dirname(os.path.abspath(__file__))
+
+# DİKKAT: Sol taraftaki dosya adına tam uyumlu olması için "(1)" eklendi
+model_path = os.path.join(base_dir, "diyabet_modeli_resnet18 (1).onnx")
+
 session = ort.InferenceSession(model_path)
 
 def predict(image_path):
@@ -25,7 +30,7 @@ def predict(image_path):
         input_name = session.get_inputs()[0].name
         result = session.run(None, {input_name: img_data.astype(np.float32)})
         
-        # --- İŞTE EKSİK OLAN KISIM: SOFTMAX İŞLEMİ ---
+        # --- SOFTMAX İŞLEMİ ---
         # Ham skorları (logits) 0.0 ile 1.0 arasında bir yüzdelik değere çeviriyoruz
         logits = result[0][0]
         exp_logits = np.exp(logits - np.max(logits)) # Matematiksel hatayı önlemek için max çıkarılır
