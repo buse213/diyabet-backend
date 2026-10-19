@@ -64,8 +64,9 @@ app.post('/isleme', upload.single('file'), async (req, res) => {
                 const confidence = yerelSonuc.confidence || 0.0; 
 
                 const bizimSinirlerdeMi = (predictedIndex >= 0 && predictedIndex < 15);
-               const modelEminMi = (confidence >= 0.85);
+                const modelEminMi = (confidence >= 0.85);
 
+                // Düzeltilen çarpma işlemi (*) kısımları:
                 console.log(`Yerel Model Tahmini: İndeks ${predictedIndex}, Güven Oranı: %${(confidence * 100).toFixed(2)}`);
 
                 if (bizimSinirlerdeMi && modelEminMi) {
@@ -87,8 +88,7 @@ app.post('/isleme', upload.single('file'), async (req, res) => {
                     const fileBuffer = fs.readFileSync(imagePath);
                     if (fs.existsSync(imagePath)) fs.unlinkSync(imagePath);
 
-                    // İŞTE BÜTÜN HATAYI ÇÖZECEK O GÜNCEL SATIR BURADA
-                  const model = genAI.getGenerativeModel({ model: "gemini-3.8-flash" });
+                    const model = genAI.getGenerativeModel({ model: "gemini-3.8-flash" });
                     
                     const imageBase64 = fileBuffer.toString("base64");
                     
