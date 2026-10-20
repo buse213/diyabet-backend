@@ -66,7 +66,6 @@ app.post('/isleme', upload.single('file'), async (req, res) => {
                 const bizimSinirlerdeMi = (predictedIndex >= 0 && predictedIndex < 15);
                 const modelEminMi = (confidence >= 0.85);
 
-                // Düzeltilen çarpma işlemi (*) kısımları:
                 console.log(`Yerel Model Tahmini: İndeks ${predictedIndex}, Güven Oranı: %${(confidence * 100).toFixed(2)}`);
 
                 if (bizimSinirlerdeMi && modelEminMi) {
