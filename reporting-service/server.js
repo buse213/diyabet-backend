@@ -126,15 +126,14 @@ app.get('/sik-tuketilenler', (req, res) => {
         return res.status(400).json({ durum: 'hata', mesaj: 'Email parametresi eksik' });
     }
 
-    // GÜNCELLEME: "AND yemek_ismi != 'Hızlı Düzeltme / Kontrol'" kodu eklendi.
+    // GÜNCELLEME: Karbonhidrat gruplaması kaldırıldı, sadece isme göre gruplanıyor.
     const sql = `
         SELECT 
             yemek_ismi AS turkce_isim, 
-            alinan_karbonhidrat AS karbonhidrat_miktari, 
             COUNT(*) AS tuketim_sayisi 
         FROM gecmis_kayitlar 
         WHERE email = ? AND yemek_ismi != 'Hızlı Düzeltme / Kontrol'
-        GROUP BY yemek_ismi, alinan_karbonhidrat 
+        GROUP BY yemek_ismi
         ORDER BY tuketim_sayisi DESC 
         LIMIT 5
     `;
