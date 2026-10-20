@@ -101,6 +101,15 @@ app.post('/profil-guncelle', async (req, res) => {
     }
 });
 
+// 7. SIK TÜKETİLENLERİ GETİRME İŞLEMİNİ RAPORLAMA SERVİSİNE İLET (3003)
+app.get('/api/sik-tuketilenler', async (req, res) => {
+    try {
+        const response = await axios.get(`${REPORTING_SERVICE_URL}/sik-tuketilenler`);
+        res.json(response.data);
+    } catch (error) {
+        res.status(500).json({ durum: 'hata', mesaj: 'Raporlama Servisine ulaşılamadı.' });
+    }
+});
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 API Gateway ${PORT} portunda aktif. Tüm istekler buradan yönetiliyor.`);
