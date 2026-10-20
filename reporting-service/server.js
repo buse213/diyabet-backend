@@ -117,7 +117,7 @@ app.post('/profil-guncelle', (req, res) => {
 });
 
 // ==========================================
-// 6. SIK TÜKETİLENLERİ GETİR (Kişiye Özel)
+// 6. SIK TÜKETİLENLERİ GETİR (Kişiye Özel ve Sadece Yemekler)
 // ==========================================
 app.get('/sik-tuketilenler', (req, res) => {
     const { email } = req.query; 
@@ -126,15 +126,14 @@ app.get('/sik-tuketilenler', (req, res) => {
         return res.status(400).json({ durum: 'hata', mesaj: 'Email parametresi eksik' });
     }
 
-    // Kullanıcının kendi geçmişindeki yemekleri sayar
-    // AS kelimesi ile React Native'deki 'item.turkce_isim' değişkenine uyumlu hale getirdik
+    // GÜNCELLEME: "AND yemek_ismi != 'Hızlı Düzeltme / Kontrol'" kodu eklendi.
     const sql = `
         SELECT 
             yemek_ismi AS turkce_isim, 
             alinan_karbonhidrat AS karbonhidrat_miktari, 
             COUNT(*) AS tuketim_sayisi 
         FROM gecmis_kayitlar 
-        WHERE email = ?
+        WHERE email = ? AND yemek_ismi != 'Hızlı Düzeltme / Kontrol'
         GROUP BY yemek_ismi, alinan_karbonhidrat 
         ORDER BY tuketim_sayisi DESC 
         LIMIT 5
