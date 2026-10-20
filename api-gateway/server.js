@@ -21,7 +21,6 @@ const IMAGE_SERVICE_URL = process.env.IMAGE_SERVICE_URL || 'http://localhost:300
 const REPORTING_SERVICE_URL = process.env.REPORTING_SERVICE_URL || 'http://localhost:3003';
 
 // 1. YAPAY ZEKA İSTEĞİNİ GÖRÜNTÜ SERVİSİNE İLET (3001)
-// BURASI '/analiz' YERİNE '/isleme' OLARAK DÜZELTİLDİ
 app.post('/isleme', upload.single('file'), async (req, res) => {
     if (!req.file) {
         console.log("❌ HATA: Telefondan dosya gelmedi (req.file boş).");
@@ -104,12 +103,14 @@ app.post('/profil-guncelle', async (req, res) => {
 // 7. SIK TÜKETİLENLERİ GETİRME İŞLEMİNİ RAPORLAMA SERVİSİNE İLET (3003)
 app.get('/api/sik-tuketilenler', async (req, res) => {
     try {
-        const response = await axios.get(`${REPORTING_SERVICE_URL}/sik-tuketilenler`);
+        // GÜNCELLENEN KISIM: { params: req.query } eklendi
+        const response = await axios.get(`${REPORTING_SERVICE_URL}/sik-tuketilenler`, { params: req.query });
         res.json(response.data);
     } catch (error) {
         res.status(500).json({ durum: 'hata', mesaj: 'Raporlama Servisine ulaşılamadı.' });
     }
 });
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 API Gateway ${PORT} portunda aktif. Tüm istekler buradan yönetiliyor.`);
