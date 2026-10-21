@@ -1,6 +1,8 @@
 const express = require('express');
 const cors = require('cors');
 const mysql = require('mysql2');
+const { exec } = require('child_process'); // Python'u çalıştırmak için eklendi
+const path = require('path');              // Dosya yollarını bulmak için eklendi
 
 const app = express();
 app.use(cors());
@@ -147,7 +149,7 @@ app.get('/sik-tuketilenler', (req, res) => {
 });
 
 // ==========================================
-// 7. YAPAY ZEKA İNSÜLİN VE GLİKOZ TAHMİNİ (LSTM İÇİN VERİ HAZIRLIĞI)
+// 7. YAPAY ZEKA İNSÜLİN VE GLİKOZ TAHMİNİ (LSTM İÇİN VERİ HAZIRLIĞI VE BAĞLANTISI)
 // ==========================================
 app.post('/insulin-tahmini', (req, res) => {
     const { email, anlik_seker, guncel_karbonhidrat } = req.body;
@@ -173,18 +175,48 @@ app.post('/insulin-tahmini', (req, res) => {
 
         // Zaman serisi doğru aksın diye veriyi eskiden yeniye doğru sıralıyoruz
         const gecmisVeriler = results.reverse(); 
-
         console.log("1. Aşama: LSTM için kullanıcının geçmiş verileri başarıyla çekildi.");
 
-        // TODO: 2. Adımda buraya Python (predict_lstm.py) scriptini çağıran "exec" kodlarını ekleyeceğiz.
+        // Python'a göndereceğimiz tüm veriyi tek bir JSON paketine koyuyoruz
+        const pythonVerisi = {
+            gecmis_veriler: gecmisVeriler,
+            anlik_seker: parseFloat(anlik_seker),
+            guncel_karbonhidrat: parseFloat(guncel_karbonhidrat)
+        };
+
+        const scriptPath = path.resolve(__dirname, 'predict_lstm.py');
+        const pythonExecutable = "python3"; 
         
-        // Şimdilik test edebilmen için sahte (mock) bir yanıt dönüyoruz:
-        return res.json({
-            durum: 'basarili',
-            mesaj: 'Veritabanı aşaması tamam, veri Python için hazır!',
-            analiz_sonucu: {
-                gelecekteki_seker: 185,        // İkinci adımda burası Python'dan dinamik gelecek
-                onerilen_insulin: 4.5          // İkinci adımda burası Python'dan dinamik gelecek
+        // JSON verisini string'e çevirip argüman olarak yolluyoruz
+        const argumanString = JSON.stringify(pythonVerisi).replace(/"/g, '\\"');
+
+        // Python betiğini (predict_lstm.py) çalıştırıyoruz
+        exec(`"${pythonExecutable}" "${scriptPath}" "${argumanString}"`, (error, stdout, stderr) => {
+            if (error) {
+                console.error("Python Çalıştırma Hatası:", error);
+                return res.status(500).json({ durum: 'hata', mesaj: 'Yapay zeka analizinde hata oluştu.' });
+            }
+
+            try {
+                const temizStdout = stdout.trim();
+                const pythonSonuc = JSON.parse(temizStdout);
+
+                if (pythonSonuc.error) {
+                    return res.status(500).json({ durum: 'hata', mesaj: pythonSonuc.error });
+                }
+
+                console.log("2. Aşama: LSTM Modeli sonucu döndürdü:", pythonSonuc);
+                
+                // Python'dan gelen dinamik sonucu React Native'e iletiyoruz
+                return res.json({
+                    durum: 'basarili',
+                    kaynak: 'LSTM Yapay Zeka Modeli',
+                    analiz_sonucu: pythonSonuc
+                });
+
+            } catch (parseError) {
+                console.error("Python Çıktısı Parse Edilemedi:", parseError);
+                return res.status(500).json({ durum: 'hata', mesaj: 'Model çıktısı okunamadı.' });
             }
         });
     });
