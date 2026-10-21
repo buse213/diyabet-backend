@@ -126,7 +126,6 @@ app.get('/sik-tuketilenler', (req, res) => {
         return res.status(400).json({ durum: 'hata', mesaj: 'Email parametresi eksik' });
     }
 
-    // GÜNCELLEME: Karbonhidrat gruplaması kaldırıldı, sadece isme göre gruplanıyor.
     const sql = `
         SELECT 
             yemek_ismi AS turkce_isim, 
@@ -144,6 +143,50 @@ app.get('/sik-tuketilenler', (req, res) => {
             return res.status(500).json({ error: "Veritabanı hatası" });
         }
         res.json(results);
+    });
+});
+
+// ==========================================
+// 7. YAPAY ZEKA İNSÜLİN VE GLİKOZ TAHMİNİ (LSTM İÇİN VERİ HAZIRLIĞI)
+// ==========================================
+app.post('/insulin-tahmini', (req, res) => {
+    const { email, anlik_seker, guncel_karbonhidrat } = req.body;
+
+    if (!email || anlik_seker == null || guncel_karbonhidrat == null) {
+        return res.status(400).json({ durum: 'hata', mesaj: 'Eksik veri gönderildi. Lütfen email, anlik_seker ve guncel_karbonhidrat alanlarını doldurun.' });
+    }
+
+    // Hastanın son 5 öğünlük geçmişini çekiyoruz ki LSTM modeline trendi verebilelim
+    const query = `
+        SELECT alinan_karbonhidrat, olculen_kan_sekeri, onerilen_insulin 
+        FROM gecmis_kayitlar 
+        WHERE email = ? 
+        ORDER BY tarih DESC 
+        LIMIT 5
+    `;
+
+    db.query(query, [email], (err, results) => {
+        if (err) {
+            console.error("Veritabanı hatası (LSTM için geçmiş çekilirken):", err);
+            return res.status(500).json({ durum: 'hata', mesaj: 'Geçmiş veriler alınamadı.' });
+        }
+
+        // Zaman serisi doğru aksın diye veriyi eskiden yeniye doğru sıralıyoruz
+        const gecmisVeriler = results.reverse(); 
+
+        console.log("1. Aşama: LSTM için kullanıcının geçmiş verileri başarıyla çekildi.");
+
+        // TODO: 2. Adımda buraya Python (predict_lstm.py) scriptini çağıran "exec" kodlarını ekleyeceğiz.
+        
+        // Şimdilik test edebilmen için sahte (mock) bir yanıt dönüyoruz:
+        return res.json({
+            durum: 'basarili',
+            mesaj: 'Veritabanı aşaması tamam, veri Python için hazır!',
+            analiz_sonucu: {
+                gelecekteki_seker: 185,        // İkinci adımda burası Python'dan dinamik gelecek
+                onerilen_insulin: 4.5          // İkinci adımda burası Python'dan dinamik gelecek
+            }
+        });
     });
 });
 
