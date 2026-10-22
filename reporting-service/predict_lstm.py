@@ -1,12 +1,13 @@
-import sys
-import json
+import os
 import torch
 import torch.nn as nn
 import numpy as np
 import pandas as pd
 import pickle
+from flask import Flask, request, jsonify
+from flask_cors import CORS
 
-# Modeli Yüklemek İçin Sınıfı Tekrar Tanımlamalıyız (Eğitimdeki mimarinin birebir aynısı)
+# Modeli Yüklemek İçin Sınıfı Tekrar Tanımlamalıyız
 class DiabetesLSTM(nn.Module):
     def __init__(self):
         super().__init__()
@@ -18,25 +19,31 @@ class DiabetesLSTM(nn.Module):
         out = self.fc(out[:, -1, :])
         return out
 
-def main():
+app = Flask(__name__)
+CORS(app)
+
+# KRİTİK DEĞİŞİKLİK: Model ve Scaler sunucu başlarken SADECE BİR KERE RAM'e yüklenir.
+# Bu sayede her analizde yeniden yüklenmez ve hafıza şişmez.
+print("Yapay Zeka Modeli Yükleniyor...")
+model = DiabetesLSTM()
+model.load_state_dict(torch.load('lstm_model.pt', map_location=torch.device('cpu')))
+model.eval()
+
+with open('scaler.pkl', 'rb') as f:
+    scaler = pickle.load(f)
+print("Model ve Scaler başarıyla yüklendi, API dinlemeye hazır!")
+
+@app.route('/predict', methods=['POST'])
+def predict():
     try:
-        # 1. Node.js'ten gelen veriyi al
-        input_data = sys.argv[1]
-        data = json.loads(input_data)
+        # 1. Node.js'ten gelen veriyi HTTP Request içinden al
+        data = request.json
         
         gecmis_veriler = data.get("gecmis_veriler", [])
         anlik_seker = data.get("anlik_seker", 100)
         guncel_karb = data.get("guncel_karbonhidrat", 0)
 
-        # 2. Eğittiğimiz Modeli ve Scaler'ı Yükle
-        model = DiabetesLSTM()
-        model.load_state_dict(torch.load('lstm_model.pt', map_location=torch.device('cpu')))
-        model.eval()
-
-        with open('scaler.pkl', 'rb') as f:
-            scaler = pickle.load(f)
-
-        # 3. Geçmiş Verileri Zaman Serisi Sekansına Çevir (Beklenen format: Karb, İnsülin, Glikoz)
+        # 2. Geçmiş Verileri Zaman Serisi Sekansına Çevir
         sekans = []
         for kayit in gecmis_veriler:
             sekans.append([
@@ -45,50 +52,47 @@ def main():
                 float(kayit.get("olculen_kan_sekeri", 100))
             ])
         
-        # Güncel öğünü de ekle (İnsülin henüz önerilmediği için geçici bir başlangıç dozu hesaplıyoruz)
+        # Güncel öğünü ekle
         tahmini_guncel_insulin = guncel_karb / 12.0
         sekans.append([float(guncel_karb), tahmini_guncel_insulin, float(anlik_seker)])
 
-        # LSTM 5 adımlık veri beklediği için, veri azsa ilk veriyi kopyalayarak 5'e tamamlıyoruz
+        # LSTM 5 adımlık veri beklediği için tamamla
         while len(sekans) < 5:
             if len(sekans) > 0:
                 sekans.insert(0, sekans[0])
             else:
-                sekans.append([0.0, 0.0, 100.0]) # Hiç geçmiş yoksa varsayılan
+                sekans.append([0.0, 0.0, 100.0]) 
         
-        # Sadece son 5 adımı alıyoruz
         sekans = sekans[-5:]
 
-        # 4. Veriyi Ölçeklendir (Normalize Et) ve PyTorch Tensörüne Çevir
+        # 3. Veriyi Ölçeklendir ve PyTorch Tensörüne Çevir
         df_sekans = pd.DataFrame(sekans, columns=['karbonhidrat', 'insulin', 'glikoz'])
         scaled_sekans = scaler.transform(df_sekans)
         X_tensor = torch.tensor([scaled_sekans], dtype=torch.float32)
 
-        # 5. GERÇEK YAPAY ZEKA TAHMİNİ (Forward Pass)
+        # 4. GERÇEK YAPAY ZEKA TAHMİNİ (Forward Pass)
         with torch.no_grad():
             scaled_gelecek_seker = model(X_tensor).item()
 
-        # Tahmin edilen değeri gerçek mg/dL formatına geri çevir (Inverse Transform)
         dummy_row = np.array([[0, 0, scaled_gelecek_seker]])
         gelecek_seker_mgdl = float(scaler.inverse_transform(dummy_row)[0][2])
 
-        # 6. Trende Göre İnsülin Dozunu Düzelt
+        # 5. Trende Göre İnsülin Dozunu Düzelt
         if gelecek_seker_mgdl > 140:
             ekstra_doz = (gelecek_seker_mgdl - 140) / 40.0
             onerilen_insulin = tahmini_guncel_insulin + ekstra_doz
         else:
             onerilen_insulin = tahmini_guncel_insulin
 
-        # 7. Sonucu Node.js'e Fırlat
-        sonuc = {
+        # 6. Sonucu JSON formatında Node.js'e geri dön
+        return jsonify({
             "gelecekteki_seker": round(gelecek_seker_mgdl, 1),
             "onerilen_insulin": round(max(0, onerilen_insulin), 1)
-        }
-        
-        print(json.dumps(sonuc))
+        })
 
     except Exception as e:
-        print(json.dumps({"error": str(e)}))
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
-    main()
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=port)

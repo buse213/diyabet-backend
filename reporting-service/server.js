@@ -1,7 +1,6 @@
 const express = require('express');
 const cors = require('cors');
 const mysql = require('mysql2');
-const { exec } = require('child_process'); // Python'u çalıştırmak için eklendi
 const path = require('path');              // Dosya yollarını bulmak için eklendi
 
 const app = express();
@@ -128,7 +127,7 @@ app.get('/sik-tuketilenler', (req, res) => {
         return res.status(400).json({ durum: 'hata', mesaj: 'Email parametresi eksik' });
     }
 
-    // YENİ EKLENEN KISIM: 100 gramdaki temel karbonhidrat değerini hesaplayan sql formülü
+    // 100 gramdaki temel karbonhidrat değerini hesaplayan sql formülü
     const sql = `
         SELECT 
             yemek_ismi AS turkce_isim, 
@@ -151,7 +150,7 @@ app.get('/sik-tuketilenler', (req, res) => {
 });
 
 // ==========================================
-// 7. YAPAY ZEKA İNSÜLİN VE GLİKOZ TAHMİNİ (LSTM İÇİN VERİ HAZIRLIĞI VE BAĞLANTISI)
+// 7. YAPAY ZEKA İNSÜLİN VE GLİKOZ TAHMİNİ (API İLE HABERLEŞME)
 // ==========================================
 app.post('/insulin-tahmini', (req, res) => {
     const { email, anlik_seker, guncel_karbonhidrat } = req.body;
@@ -160,7 +159,6 @@ app.post('/insulin-tahmini', (req, res) => {
         return res.status(400).json({ durum: 'hata', mesaj: 'Eksik veri gönderildi. Lütfen email, anlik_seker ve guncel_karbonhidrat alanlarını doldurun.' });
     }
 
-    // Hastanın son 5 öğünlük geçmişini çekiyoruz ki LSTM modeline trendi verebilelim
     const query = `
         SELECT alinan_karbonhidrat, olculen_kan_sekeri, onerilen_insulin 
         FROM gecmis_kayitlar 
@@ -169,58 +167,49 @@ app.post('/insulin-tahmini', (req, res) => {
         LIMIT 5
     `;
 
-    db.query(query, [email], (err, results) => {
+    db.query(query, [email], async (err, results) => {
         if (err) {
             console.error("Veritabanı hatası (LSTM için geçmiş çekilirken):", err);
             return res.status(500).json({ durum: 'hata', mesaj: 'Geçmiş veriler alınamadı.' });
         }
 
-        // Zaman serisi doğru aksın diye veriyi eskiden yeniye doğru sıralıyoruz
         const gecmisVeriler = results.reverse(); 
         console.log("1. Aşama: LSTM için kullanıcının geçmiş verileri başarıyla çekildi.");
 
-        // Python'a göndereceğimiz tüm veriyi tek bir JSON paketine koyuyoruz
         const pythonVerisi = {
             gecmis_veriler: gecmisVeriler,
             anlik_seker: parseFloat(anlik_seker),
             guncel_karbonhidrat: parseFloat(guncel_karbonhidrat)
         };
 
-        const scriptPath = path.resolve(__dirname, 'predict_lstm.py');
-        const pythonExecutable = "python3"; 
-        
-        // JSON verisini string'e çevirip argüman olarak yolluyoruz
-        const argumanString = JSON.stringify(pythonVerisi).replace(/"/g, '\\"');
+        try {
+            // NOT: Python servisini Render'a yüklediğimizde bu linki o servisin adresiyle değiştireceğiz.
+            const pythonApiLink = 'https://YENI-PYTHON-SERVISININ-LINKI.onrender.com/predict';
+            
+            const aiResponse = await fetch(pythonApiLink, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(pythonVerisi)
+            });
 
-        // Python betiğini (predict_lstm.py) çalıştırıyoruz
-        exec(`"${pythonExecutable}" "${scriptPath}" "${argumanString}"`, (error, stdout, stderr) => {
-            if (error) {
-                console.error("Python Çalıştırma Hatası:", error);
-                return res.status(500).json({ durum: 'hata', mesaj: 'Yapay zeka analizinde hata oluştu.' });
+            const pythonSonuc = await aiResponse.json();
+
+            if (pythonSonuc.error) {
+                return res.status(500).json({ durum: 'hata', mesaj: pythonSonuc.error });
             }
 
-            try {
-                const temizStdout = stdout.trim();
-                const pythonSonuc = JSON.parse(temizStdout);
+            console.log("2. Aşama: LSTM Modeli sonucu döndürdü:", pythonSonuc);
+            
+            return res.json({
+                durum: 'basarili',
+                kaynak: 'LSTM Yapay Zeka Modeli',
+                analiz_sonucu: pythonSonuc
+            });
 
-                if (pythonSonuc.error) {
-                    return res.status(500).json({ durum: 'hata', mesaj: pythonSonuc.error });
-                }
-
-                console.log("2. Aşama: LSTM Modeli sonucu döndürdü:", pythonSonuc);
-                
-                // Python'dan gelen dinamik sonucu React Native'e iletiyoruz
-                return res.json({
-                    durum: 'basarili',
-                    kaynak: 'LSTM Yapay Zeka Modeli',
-                    analiz_sonucu: pythonSonuc
-                });
-
-            } catch (parseError) {
-                console.error("Python Çıktısı Parse Edilemedi:", parseError);
-                return res.status(500).json({ durum: 'hata', mesaj: 'Model çıktısı okunamadı.' });
-            }
-        });
+        } catch (error) {
+            console.error("Python API İstek Hatası:", error);
+            return res.status(500).json({ durum: 'hata', mesaj: 'Yapay zeka servisine ulaşılamadı.' });
+        }
     });
 });
 
