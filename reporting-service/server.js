@@ -128,12 +128,14 @@ app.get('/sik-tuketilenler', (req, res) => {
         return res.status(400).json({ durum: 'hata', mesaj: 'Email parametresi eksik' });
     }
 
+    // YENİ EKLENEN KISIM: 100 gramdaki temel karbonhidrat değerini hesaplayan sql formülü
     const sql = `
         SELECT 
             yemek_ismi AS turkce_isim, 
-            COUNT(*) AS tuketim_sayisi 
+            COUNT(*) AS tuketim_sayisi,
+            ROUND(AVG((alinan_karbonhidrat / tuketilen_gramaj) * 100)) AS karbonhidrat_miktari
         FROM gecmis_kayitlar 
-        WHERE email = ? AND yemek_ismi != 'Hızlı Düzeltme / Kontrol'
+        WHERE email = ? AND yemek_ismi != 'Hızlı Düzeltme / Kontrol' AND tuketilen_gramaj > 0
         GROUP BY yemek_ismi
         ORDER BY tuketim_sayisi DESC 
         LIMIT 5
