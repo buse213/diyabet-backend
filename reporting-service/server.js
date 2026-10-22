@@ -183,8 +183,7 @@ app.post('/insulin-tahmini', (req, res) => {
         };
 
         try {
-            // NOT: Python servisini Render'a yüklediğimizde bu linki o servisin adresiyle değiştireceğiz.
-            const pythonApiLink = 'https://YENI-PYTHON-SERVISININ-LINKI.onrender.com/predict';
+         const pythonApiLink = 'https://lstm-api-service.onrender.com/predict';
             
             const aiResponse = await fetch(pythonApiLink, {
                 method: 'POST',
