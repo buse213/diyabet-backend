@@ -103,13 +103,47 @@ app.post('/profil-guncelle', async (req, res) => {
 // 7. SIK TÜKETİLENLERİ GETİRME İŞLEMİNİ RAPORLAMA SERVİSİNE İLET (3003)
 app.get('/api/sik-tuketilenler', async (req, res) => {
     try {
-        // GÜNCELLENEN KISIM: { params: req.query } eklendi
         const response = await axios.get(`${REPORTING_SERVICE_URL}/sik-tuketilenler`, { params: req.query });
         res.json(response.data);
     } catch (error) {
         res.status(500).json({ durum: 'hata', mesaj: 'Raporlama Servisine ulaşılamadı.' });
     }
 });
+
+// ==========================================
+// 8. ŞİFRE SIFIRLAMA İŞLEMLERİ (YENİ EKLENDİ)
+// ==========================================
+app.post('/sifremi-unuttum', async (req, res) => {
+    try {
+        const response = await axios.post(`${REPORTING_SERVICE_URL}/sifremi-unuttum`, req.body);
+        res.json(response.data);
+    } catch (error) {
+        if (error.response && error.response.data) return res.status(error.response.status).json(error.response.data);
+        res.status(500).json({ durum: 'hata', mesaj: 'Şifre sıfırlama servisine ulaşılamadı.' });
+    }
+});
+
+app.get('/sifre-sifirla', async (req, res) => {
+    try {
+        // Form getireceği için json olarak parse etmeden, doğrudan HTML olarak ilet
+        const response = await axios.get(`${REPORTING_SERVICE_URL}/sifre-sifirla`, { params: req.query });
+        res.send(response.data);
+    } catch (error) {
+        res.status(500).send('<h2>Şifre sıfırlama formuna ulaşılamadı. Lütfen daha sonra tekrar deneyin.</h2>');
+    }
+});
+
+app.post('/sifre-guncelle', express.urlencoded({ extended: true }), async (req, res) => {
+    try {
+        const response = await axios.post(`${REPORTING_SERVICE_URL}/sifre-guncelle`, req.body, {
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+        });
+        res.send(response.data);
+    } catch (error) {
+        res.status(500).send('<h2 style="color: red; text-align: center;">Şifre güncelleme servisine ulaşılamadı.</h2>');
+    }
+});
+
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
