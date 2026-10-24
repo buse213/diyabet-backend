@@ -110,9 +110,7 @@ app.get('/api/sik-tuketilenler', async (req, res) => {
     }
 });
 
-// ==========================================
-// 8. ŞİFRE SIFIRLAMA İŞLEMLERİ (YENİ EKLENDİ)
-// ==========================================
+// 8. ŞİFRE SIFIRLAMA İŞLEMLERİ
 app.post('/sifremi-unuttum', async (req, res) => {
     try {
         const response = await axios.post(`${REPORTING_SERVICE_URL}/sifremi-unuttum`, req.body);
@@ -125,7 +123,6 @@ app.post('/sifremi-unuttum', async (req, res) => {
 
 app.get('/sifre-sifirla', async (req, res) => {
     try {
-        // Form getireceği için json olarak parse etmeden, doğrudan HTML olarak ilet
         const response = await axios.get(`${REPORTING_SERVICE_URL}/sifre-sifirla`, { params: req.query });
         res.send(response.data);
     } catch (error) {
@@ -144,6 +141,34 @@ app.post('/sifre-guncelle', express.urlencoded({ extended: true }), async (req, 
     }
 });
 
+// 9. SESLİ KOMUT ANALİZ ENDPOINT'İ (YENİ EKLENDİ)
+app.post('/sesli-analiz', upload.single('audio'), async (req, res) => {
+    try {
+        if (!req.file) {
+            console.log("❌ HATA: Telefondan ses dosyası gelmedi (req.file boş).");
+            return res.status(400).json({ durum: 'hata', mesaj: 'Ses dosyası yok' });
+        }
+
+        console.log(`🎤 Ses dosyası alındı. Analiz ediliyor...`);
+
+        // Simüle edilmiş ses analizi / NLP çıktısı
+        const sesAnalizSonucu = {
+            turkce_isim: "Karışık Izgara",
+            karbonhidrat_miktari: 15,
+            tahmini_gramaj: 200
+        };
+
+        console.log("✅ Sesli komut başarıyla çözümlendi.");
+        res.json({
+            durum: 'basarili',
+            sonuc: sesAnalizSonucu
+        });
+
+    } catch (error) {
+        console.error("❌ SESLİ ANALİZ HATASI:", error.message);
+        res.status(500).json({ durum: 'hata', mesaj: 'Ses analizi gerçekleştirilemedi.', detay: error.message });
+    }
+});
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
