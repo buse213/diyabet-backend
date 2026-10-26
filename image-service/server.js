@@ -32,17 +32,21 @@ const YEREL_BESINLER = [
   { ai_etiketi: 'waffles', turkce_isim: 'Waffle', karbonhidrat_miktari: 33 }
 ];
 
-// Gemini yoğunken (503) veya limit aşılınca (429) kısa beklemeyle tekrar dener
-async function geminiDene(modelAdi, icerik, deneme = 3) {
+// Gemini yoğunken (503), limitte (429) veya takılırsa (zaman aşımı) kısa beklemeyle tekrar dener
+async function geminiDene(modelAdi, icerik, deneme = 2, zamanAsimiMs = 7000) {
     for (let i = 1; i <= deneme; i++) {
+        const baslangic = Date.now();
         try {
-            const model = genAI.getGenerativeModel({ model: modelAdi });
-            return await model.generateContent(icerik);
+            // Her denemenin kendi süre sınırı var, takılırsa bekletmez
+            const model = genAI.getGenerativeModel({ model: modelAdi }, { timeout: zamanAsimiMs });
+            const sonuc = await model.generateContent(icerik);
+            console.log(`⏱️ Gemini cevap süresi: ${Date.now() - baslangic} ms`);
+            return sonuc;
         } catch (error) {
-            const gecici = /503|429|overloaded|high demand/i.test(error.message);
-            console.log(`⚠️ Gemini denemesi ${i}/${deneme} başarısız: ${error.message.slice(0, 120)}`);
+            const gecici = /503|429|overloaded|high demand|timeout|timed out|abort|fetch failed/i.test(error.message);
+            console.log(`⚠️ Gemini denemesi ${i}/${deneme} başarısız (${Date.now() - baslangic} ms): ${error.message.slice(0, 150)}`);
             if (!gecici || i === deneme) throw error;
-            await new Promise(r => setTimeout(r, 1500 * i));
+            await new Promise(r => setTimeout(r, 1000 * i));
         }
     }
 }

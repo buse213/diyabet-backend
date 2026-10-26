@@ -150,7 +150,7 @@ app.post('/sesli-analiz', async (req, res) => {
     }
 
     try {
-        const response = await axios.post(`${IMAGE_SERVICE_URL}/metin-analiz`, { komut }, { timeout: 30000 });
+        const response = await axios.post(`${IMAGE_SERVICE_URL}/metin-analiz`, { komut }, { timeout: 18000 });
         res.json(response.data);
     } catch (error) {
         console.error("❌ SESLİ ANALİZ HATASI:", error.message);
