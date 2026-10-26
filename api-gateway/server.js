@@ -141,32 +141,20 @@ app.post('/sifre-guncelle', express.urlencoded({ extended: true }), async (req, 
     }
 });
 
-// 9. SESLİ KOMUT ANALİZ ENDPOINT'İ (YENİ EKLENDİ)
-app.post('/sesli-analiz', upload.single('audio'), async (req, res) => {
+// 9. SESLİ KOMUT ANALİZİ: metni görüntü servisindeki Gemini analizine ilet
+app.post('/sesli-analiz', async (req, res) => {
+    const komut = req.body && req.body.komut;
+    if (!komut || !String(komut).trim()) {
+        console.log("❌ HATA: Komut metni gelmedi.");
+        return res.status(400).json({ durum: 'hata', mesaj: 'Komut metni yok' });
+    }
+
     try {
-        if (!req.file) {
-            console.log("❌ HATA: Telefondan ses dosyası gelmedi (req.file boş).");
-            return res.status(400).json({ durum: 'hata', mesaj: 'Ses dosyası yok' });
-        }
-
-        console.log(`🎤 Ses dosyası alındı. Analiz ediliyor...`);
-
-        // Simüle edilmiş ses analizi / NLP çıktısı
-        const sesAnalizSonucu = {
-            turkce_isim: "Karışık Izgara",
-            karbonhidrat_miktari: 15,
-            tahmini_gramaj: 200
-        };
-
-        console.log("✅ Sesli komut başarıyla çözümlendi.");
-        res.json({
-            durum: 'basarili',
-            sonuc: sesAnalizSonucu
-        });
-
+        const response = await axios.post(`${IMAGE_SERVICE_URL}/metin-analiz`, { komut }, { timeout: 30000 });
+        res.json(response.data);
     } catch (error) {
         console.error("❌ SESLİ ANALİZ HATASI:", error.message);
-        res.status(500).json({ durum: 'hata', mesaj: 'Ses analizi gerçekleştirilemedi.', detay: error.message });
+        res.status(500).json({ durum: 'hata', mesaj: 'Sesli analiz servisine ulaşılamadı.', detay: error.message });
     }
 });
 
