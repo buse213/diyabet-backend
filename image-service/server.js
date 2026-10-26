@@ -32,23 +32,26 @@ const YEREL_BESINLER = [
   { ai_etiketi: 'waffles', turkce_isim: 'Waffle', karbonhidrat_miktari: 33 }
 ];
 
-// Gemini yoğunken (503), limitte (429) veya takılırsa (zaman aşımı) kısa beklemeyle tekrar dener
-async function geminiDene(modelAdi, icerik, deneme = 2, zamanAsimiMs = 7000) {
-    for (let i = 1; i <= deneme; i++) {
+// Kullanılacak Gemini modeli ("gemini-flash-latest" her zaman en güncel flash modele işaret eder)
+const MODEL_ADI = 'gemini-flash-latest';
+const MODELLER = [MODEL_ADI, MODEL_ADI]; // aynı model en fazla 2 kez denenir
+
+// Hata, yoğunluk veya takılma (zaman aşımı) olursa listedeki sıradaki denemeye geçer
+async function geminiDene(modeller, icerik, zamanAsimiMs = 8000) {
+    let sonHata;
+    for (let i = 0; i < modeller.length; i++) {
         const baslangic = Date.now();
         try {
-            // Her denemenin kendi süre sınırı var, takılırsa bekletmez
-            const model = genAI.getGenerativeModel({ model: modelAdi }, { timeout: zamanAsimiMs });
+            const model = genAI.getGenerativeModel({ model: modeller[i] }, { timeout: zamanAsimiMs });
             const sonuc = await model.generateContent(icerik);
-            console.log(`⏱️ Gemini cevap süresi: ${Date.now() - baslangic} ms`);
+            console.log(`⏱️ Gemini (${modeller[i]}) cevap süresi: ${Date.now() - baslangic} ms`);
             return sonuc;
         } catch (error) {
-            const gecici = /503|429|overloaded|high demand|timeout|timed out|abort|fetch failed/i.test(error.message);
-            console.log(`⚠️ Gemini denemesi ${i}/${deneme} başarısız (${Date.now() - baslangic} ms): ${error.message.slice(0, 150)}`);
-            if (!gecici || i === deneme) throw error;
-            await new Promise(r => setTimeout(r, 1000 * i));
+            sonHata = error;
+            console.log(`⚠️ Gemini denemesi ${i + 1}/${modeller.length} (${modeller[i]}) başarısız (${Date.now() - baslangic} ms): ${error.message.slice(0, 150)}`);
         }
     }
+    throw sonHata;
 }
 
 app.post('/isleme', upload.single('file'), async (req, res) => {
@@ -114,7 +117,7 @@ app.post('/isleme', upload.single('file'), async (req, res) => {
 
                     const prompt = `Sen uzman bir diyetisyen ve diyabet asistanısın. Bu fotoğraftaki yemeği analiz et. Sadece yemeğin Türkçe adını ve 100 gramındaki ortalama karbonhidrat miktarını tahmin et. Asla ekstra bir metin yazma. SADECE geçerli bir JSON objesi döndür: {"turkce_isim": "Yemek Adı", "karbonhidrat_miktari": 25.5}`;
 
-                    const geminiResult = await geminiDene("gemini-3.8-flash", [prompt, resimVerisi]);
+                    const geminiResult = await geminiDene(MODELLER, [prompt, resimVerisi], 20000);
                     const responseText = geminiResult.response.text();
                     const temizJsonMetni = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
                     const sonucObjesi = JSON.parse(temizJsonMetni);
@@ -161,7 +164,7 @@ Asla ekstra metin yazma. SADECE geçerli bir JSON objesi döndür:
 
 Sözde hiçbir yemek yoksa şunu döndür: {"bulunamadi": true}`;
 
-        const result = await geminiDene("gemini-3.8-flash", prompt);
+        const result = await geminiDene(MODELLER, prompt);
         const temiz = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
         const veri = JSON.parse(temiz);
 
