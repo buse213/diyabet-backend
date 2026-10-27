@@ -32,23 +32,25 @@ const YEREL_BESINLER = [
   { ai_etiketi: 'waffles', turkce_isim: 'Waffle', karbonhidrat_miktari: 33 }
 ];
 
-// Kullanılacak Gemini modeli ("gemini-flash-latest" her zaman en güncel flash modele işaret eder)
-const MODEL_ADI = 'gemini-flash-latest';
-const MODELLER = [MODEL_ADI, MODEL_ADI]; // aynı model en fazla 2 kez denenir
+// Kullanılacak Gemini modeli
+const MODEL_ADI = 'gemini-3.8-flash';
+const MODELLER = [MODEL_ADI, MODEL_ADI]; // aynı model hata verirse en fazla 2 kez denenir
 
-// Hata, yoğunluk veya takılma (zaman aşımı) olursa listedeki sıradaki denemeye geçer
-async function geminiDene(modeller, icerik, zamanAsimiMs = 8000) {
+// Gemini'yi çağırır; hata (503 yoğunluk, 429 limit vb.) olursa listedeki sıradaki denemeye geçer.
+// Süre sınırı yoktur: Gemini yavaş da olsa cevabı bekler.
+async function geminiDene(modeller, icerik) {
     let sonHata;
     for (let i = 0; i < modeller.length; i++) {
         const baslangic = Date.now();
         try {
-            const model = genAI.getGenerativeModel({ model: modeller[i] }, { timeout: zamanAsimiMs });
+            const model = genAI.getGenerativeModel({ model: modeller[i] });
             const sonuc = await model.generateContent(icerik);
             console.log(`⏱️ Gemini (${modeller[i]}) cevap süresi: ${Date.now() - baslangic} ms`);
             return sonuc;
         } catch (error) {
             sonHata = error;
             console.log(`⚠️ Gemini denemesi ${i + 1}/${modeller.length} (${modeller[i]}) başarısız (${Date.now() - baslangic} ms): ${error.message.slice(0, 150)}`);
+            if (i < modeller.length - 1) await new Promise(r => setTimeout(r, 1000));
         }
     }
     throw sonHata;
@@ -117,7 +119,7 @@ app.post('/isleme', upload.single('file'), async (req, res) => {
 
                     const prompt = `Sen uzman bir diyetisyen ve diyabet asistanısın. Bu fotoğraftaki yemeği analiz et. Sadece yemeğin Türkçe adını ve 100 gramındaki ortalama karbonhidrat miktarını tahmin et. Asla ekstra bir metin yazma. SADECE geçerli bir JSON objesi döndür: {"turkce_isim": "Yemek Adı", "karbonhidrat_miktari": 25.5}`;
 
-                    const geminiResult = await geminiDene(MODELLER, [prompt, resimVerisi], 20000);
+                    const geminiResult = await geminiDene(MODELLER, [prompt, resimVerisi]);
                     const responseText = geminiResult.response.text();
                     const temizJsonMetni = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
                     const sonucObjesi = JSON.parse(temizJsonMetni);
