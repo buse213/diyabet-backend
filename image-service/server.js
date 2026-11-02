@@ -34,7 +34,9 @@ const YEREL_BESINLER = [
 
 // Kullanılacak Gemini modeli
 const MODEL_ADI = 'gemini-3.8-flash';
-const MODELLER = [MODEL_ADI, MODEL_ADI]; // aynı model hata verirse en fazla 2 kez denenir
+// Gemini yoğunken (503) sonuç alana kadar aynı modeli en fazla bu kadar kez dener
+const DENEME_SAYISI = 6;
+const MODELLER = Array(DENEME_SAYISI).fill(MODEL_ADI);
 
 // Gemini'yi çağırır; hata (503 yoğunluk, 429 limit vb.) olursa listedeki sıradaki denemeye geçer.
 // Süre sınırı yoktur: Gemini yavaş da olsa cevabı bekler.
@@ -50,7 +52,7 @@ async function geminiDene(modeller, icerik) {
         } catch (error) {
             sonHata = error;
             console.log(`⚠️ Gemini denemesi ${i + 1}/${modeller.length} (${modeller[i]}) başarısız (${Date.now() - baslangic} ms): ${error.message.slice(0, 150)}`);
-            if (i < modeller.length - 1) await new Promise(r => setTimeout(r, 1000));
+            if (i < modeller.length - 1) await new Promise(r => setTimeout(r, 3000));
         }
     }
     throw sonHata;
