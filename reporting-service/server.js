@@ -3,7 +3,7 @@ const cors = require('cors');
 const mysql = require('mysql2');
 const path = require('path');
 const nodemailer = require('nodemailer'); 
-const crypto = require('crypto');         
+const crypto = require('crypto');        
 
 const app = express();
 app.use(cors());
@@ -18,16 +18,91 @@ const db = mysql.createConnection({
     port: process.env.DB_PORT || 3306
 });
 
+// ==========================================
+// ŞİFRE GÜVENLİĞİ (scrypt ile hash'leme, ekstra paket gerekmez)
+// ==========================================
+const SCRYPT_ONEKI = 'scrypt$';
+const HASH_UZUNLUGU = 76;        // "scrypt$" + salt + "$" + hash toplam karakter sayısı
+let hashlemeAktif = false;       // 'sifre' sütunu yeterince uzun değilse şifreyi kesmemek için kapalı kalır
+
+// Açılışta 'sifre' sütununun uzunluğunu kontrol eder
+function sifreSutunuKontrolEt() {
+    const sorgu = `SELECT CHARACTER_MAXIMUM_LENGTH AS uzunluk FROM information_schema.COLUMNS
+                   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'kullanicilar' AND COLUMN_NAME = 'sifre'`;
+    db.query(sorgu, (err, sonuc) => {
+        if (err || !sonuc || sonuc.length === 0) {
+            console.warn('⚠️ Şifre sütunu kontrol edilemedi, şifre hash\'leme KAPALI (eski davranış).');
+            return;
+        }
+        const uzunluk = Number(sonuc[0].uzunluk);
+        if (uzunluk >= HASH_UZUNLUGU + 4) {
+            hashlemeAktif = true;
+            console.log(`🔒 Şifre hash'leme AKTİF (sifre sütunu ${uzunluk} karakter).`);
+        } else {
+            console.warn(`⚠️ 'sifre' sütunu ${uzunluk} karakter, hash (${HASH_UZUNLUGU}) sığmaz. Hash'leme KAPALI. Sütunu VARCHAR(255) yapın.`);
+        }
+    });
+}
+
 db.connect((err) => {
     if (err) console.error('MySQL bağlantı hatası:', err);
-    else console.log('MySQL veritabanına başarıyla bağlanıldı!');
+    else {
+        console.log('MySQL veritabanına başarıyla bağlanıldı!');
+        sifreSutunuKontrolEt();
+    }
 });
+
+// Şifreyi hash'ler: "scrypt$<salt>$<hash>"
+function sifreHashle(sifre, cb) {
+    const salt = crypto.randomBytes(16).toString('base64');
+    crypto.scrypt(String(sifre), salt, 32, (err, key) => {
+        if (err) return cb(err);
+        cb(null, `${SCRYPT_ONEKI}${salt}$${key.toString('base64')}`);
+    });
+}
+
+// Veritabanına yazılacak şifre biçimini üretir (hash'leme aktifse hash, değilse eski davranış)
+function sifreSakla(sifre, cb) {
+    if (!hashlemeAktif) return cb(null, sifre);
+    sifreHashle(sifre, cb);
+}
+
+// Girilen şifreyi saklanan değerle karşılaştırır (hash'li veya eski düz metin kayıt)
+function sifreDogrula(sifre, saklanan, cb) {
+    if (!saklanan) return cb(null, false);
+    saklanan = String(saklanan);
+
+    if (saklanan.startsWith(SCRYPT_ONEKI)) {
+        const parcalar = saklanan.split('$');
+        if (parcalar.length !== 3) return cb(null, false);
+        const salt = parcalar[1];
+        const beklenen = Buffer.from(parcalar[2], 'base64');
+        crypto.scrypt(String(sifre), salt, 32, (err, key) => {
+            if (err) return cb(err);
+            cb(null, beklenen.length === key.length && crypto.timingSafeEqual(beklenen, key));
+        });
+    } else {
+        // Eski (düz metin) kayıt
+        const a = Buffer.from(String(sifre));
+        const b = Buffer.from(saklanan);
+        cb(null, a.length === b.length && crypto.timingSafeEqual(a, b));
+    }
+}
 
 // ==========================================
 // 1. KULLANICI KAYIT İŞLEMİ
 // ==========================================
 app.post('/kayit', (req, res) => {
     const { ad, email, sifre } = req.body;
+
+    if (!ad || !email || !sifre) {
+        return res.status(400).json({ durum: 'hata', mesaj: 'Ad, e-posta ve şifre zorunludur.' });
+    }
+
+    // YENİ EKLENEN ŞİFRE UZUNLUK KONTROLÜ
+    if (sifre.length < 6 || sifre.length > 50) {
+        return res.status(400).json({ durum: 'hata', mesaj: 'Şifreniz en az 6, en fazla 50 karakter uzunluğunda olmalıdır.' });
+    }
 
     const checkQuery = `SELECT * FROM kullanicilar WHERE email = ?`;
     db.query(checkQuery, [email], (err, results) => {
@@ -37,10 +112,17 @@ app.post('/kayit', (req, res) => {
             return res.status(400).json({ durum: 'hata', mesaj: 'Bu e-posta zaten kayıtlı!' });
         }
 
-        const insertQuery = `INSERT INTO kullanicilar (ad, email, sifre) VALUES (?, ?, ?)`;
-        db.query(insertQuery, [ad, email, sifre], (err, result) => {
-            if (err) return res.status(500).json({ durum: 'hata', mesaj: 'Kayıt yapılamadı' });
-            res.json({ durum: 'basarili', mesaj: 'Kayıt başarıyla oluşturuldu' });
+        sifreSakla(sifre, (hashErr, saklanacakSifre) => {
+            if (hashErr) {
+                console.error('Şifre hashleme hatası:', hashErr);
+                return res.status(500).json({ durum: 'hata', mesaj: 'Kayıt yapılamadı' });
+            }
+
+            const insertQuery = `INSERT INTO kullanicilar (ad, email, sifre) VALUES (?, ?, ?)`;
+            db.query(insertQuery, [ad, email, saklanacakSifre], (err, result) => {
+                if (err) return res.status(500).json({ durum: 'hata', mesaj: 'Kayıt yapılamadı' });
+                res.json({ durum: 'basarili', mesaj: 'Kayıt başarıyla oluşturuldu' });
+            });
         });
     });
 });
@@ -51,15 +133,47 @@ app.post('/kayit', (req, res) => {
 app.post('/giris', (req, res) => {
     const { email, sifre } = req.body;
 
-    const query = `SELECT * FROM kullanicilar WHERE email = ? AND sifre = ?`;
-    db.query(query, [email, sifre], (err, results) => {
+    if (!email || !sifre) {
+        return res.status(400).json({ durum: 'hata', mesaj: 'E-posta ve şifre zorunludur.' });
+    }
+
+    const query = `SELECT * FROM kullanicilar WHERE email = ?`;
+    db.query(query, [email], (err, results) => {
         if (err) return res.status(500).json({ durum: 'hata', mesaj: 'Veritabanı hatası' });
 
-        if (results.length > 0) {
-            res.json({ durum: 'basarili', mesaj: 'Giriş başarılı', kullanici: results[0] });
-        } else {
-            res.status(401).json({ durum: 'hata', mesaj: 'E-posta veya şifre hatalı' });
+        if (results.length === 0) {
+            return res.status(401).json({ durum: 'hata', mesaj: 'E-posta veya şifre hatalı' });
         }
+
+        const kullanici = results[0];
+
+        sifreDogrula(sifre, kullanici.sifre, (dogrulaErr, dogruMu) => {
+            if (dogrulaErr) return res.status(500).json({ durum: 'hata', mesaj: 'Veritabanı hatası' });
+            if (!dogruMu) {
+                return res.status(401).json({ durum: 'hata', mesaj: 'E-posta veya şifre hatalı' });
+            }
+
+            // Telefona şifre ve sıfırlama bilgilerini göndermiyoruz
+            const gonder = () => {
+                const { sifre: _gizli, reset_token, reset_token_expires, ...temizKullanici } = kullanici;
+                res.json({ durum: 'basarili', mesaj: 'Giriş başarılı', kullanici: temizKullanici });
+            };
+
+            // Eski düz metin şifre başarılı girişte otomatik olarak hash'e yükseltilir
+            const hashliMi = String(kullanici.sifre).startsWith(SCRYPT_ONEKI);
+            if (hashlemeAktif && !hashliMi) {
+                sifreHashle(sifre, (hashErr, hashli) => {
+                    if (hashErr) return gonder();
+                    db.query(`UPDATE kullanicilar SET sifre = ? WHERE email = ?`, [hashli, email], (updErr) => {
+                        if (updErr) console.error('Şifre yükseltme hatası:', updErr);
+                        else console.log(`🔒 ${email} şifresi hash'e yükseltildi.`);
+                        gonder();
+                    });
+                });
+            } else {
+                gonder();
+            }
+        });
     });
 });
 
@@ -302,16 +416,31 @@ app.get('/sifre-sifirla', (req, res) => {
 app.post('/sifre-guncelle', express.urlencoded({ extended: true }), (req, res) => {
     const { token, yeniSifre } = req.body;
 
-    const query = `UPDATE kullanicilar SET sifre = ?, reset_token = NULL, reset_token_expires = NULL WHERE reset_token = ? AND reset_token_expires > NOW()`;
-    
-    db.query(query, [yeniSifre, token], (err, result) => {
-        if (err || result.affectedRows === 0) {
-            return res.send('<h2 style="color: red; text-align: center; margin-top: 50px;">İşlem başarısız. Bağlantı süresi dolmuş olabilir.</h2>');
+    if (!token || !yeniSifre) {
+        return res.send('<h2 style="color: red; text-align: center; margin-top: 50px;">İşlem başarısız. Eksik bilgi gönderildi.</h2>');
+    }
+
+    // YENİ EKLENEN ŞİFRE UZUNLUK KONTROLÜ
+    if (yeniSifre.length < 6 || yeniSifre.length > 50) {
+        return res.send('<h2 style="color: red; text-align: center; margin-top: 50px;">Şifreniz en az 6, en fazla 50 karakter olmalıdır! Lütfen geri dönüp tekrar deneyin.</h2>');
+    }
+
+    sifreSakla(yeniSifre, (hashErr, saklanacakSifre) => {
+        if (hashErr) {
+            console.error('Şifre hashleme hatası:', hashErr);
+            return res.send('<h2 style="color: red; text-align: center; margin-top: 50px;">İşlem başarısız. Lütfen tekrar deneyin.</h2>');
         }
-        res.send('<h2 style="color: green; text-align: center; margin-top: 50px;">Şifreniz başarıyla değiştirildi! Artık mobil uygulamadan yeni şifrenizle giriş yapabilirsiniz.</h2>');
+
+        const query = `UPDATE kullanicilar SET sifre = ?, reset_token = NULL, reset_token_expires = NULL WHERE reset_token = ? AND reset_token_expires > NOW()`;
+        
+        db.query(query, [saklanacakSifre, token], (err, result) => {
+            if (err || result.affectedRows === 0) {
+                return res.send('<h2 style="color: red; text-align: center; margin-top: 50px;">İşlem başarısız. Bağlantı süresi dolmuş olabilir.</h2>');
+            }
+            res.send('<h2 style="color: green; text-align: center; margin-top: 50px;">Şifreniz başarıyla değiştirildi! Artık mobil uygulamadan yeni şifrenizle giriş yapabilirsiniz.</h2>');
+        });
     });
 });
-
 
 // RENDER İÇİN DİNAMİK PORT VE 0.0.0.0 HOST AYARI
 const PORT = process.env.PORT || 3003;
