@@ -3,7 +3,7 @@ const cors = require('cors');
 const mysql = require('mysql2');
 const path = require('path');
 const nodemailer = require('nodemailer'); 
-const crypto = require('crypto');        
+const crypto = require('crypto');         
 
 const app = express();
 app.use(cors());
@@ -97,11 +97,6 @@ app.post('/kayit', (req, res) => {
 
     if (!ad || !email || !sifre) {
         return res.status(400).json({ durum: 'hata', mesaj: 'Ad, e-posta ve şifre zorunludur.' });
-    }
-
-    // YENİ EKLENEN ŞİFRE UZUNLUK KONTROLÜ
-    if (sifre.length < 6 || sifre.length > 50) {
-        return res.status(400).json({ durum: 'hata', mesaj: 'Şifreniz en az 6, en fazla 50 karakter uzunluğunda olmalıdır.' });
     }
 
     const checkQuery = `SELECT * FROM kullanicilar WHERE email = ?`;
@@ -420,11 +415,6 @@ app.post('/sifre-guncelle', express.urlencoded({ extended: true }), (req, res) =
         return res.send('<h2 style="color: red; text-align: center; margin-top: 50px;">İşlem başarısız. Eksik bilgi gönderildi.</h2>');
     }
 
-    // YENİ EKLENEN ŞİFRE UZUNLUK KONTROLÜ
-    if (yeniSifre.length < 6 || yeniSifre.length > 50) {
-        return res.send('<h2 style="color: red; text-align: center; margin-top: 50px;">Şifreniz en az 6, en fazla 50 karakter olmalıdır! Lütfen geri dönüp tekrar deneyin.</h2>');
-    }
-
     sifreSakla(yeniSifre, (hashErr, saklanacakSifre) => {
         if (hashErr) {
             console.error('Şifre hashleme hatası:', hashErr);
@@ -441,6 +431,7 @@ app.post('/sifre-guncelle', express.urlencoded({ extended: true }), (req, res) =
         });
     });
 });
+
 
 // RENDER İÇİN DİNAMİK PORT VE 0.0.0.0 HOST AYARI
 const PORT = process.env.PORT || 3003;
