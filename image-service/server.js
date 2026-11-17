@@ -218,4 +218,4 @@ Sözde hiçbir yemek yoksa şunu döndür: {"bulunamadi": true}`;
 });
 
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, '0.0.0.0', () => console.log(`📷 Akıllı Hibrit Görüntü Servisi ${PORT} portunda ayakta.`));
+app.listen(3001, () => console.log('📷 Akıllı Hibrit Görüntü Servisi 3001 portunda ayakta.'));
