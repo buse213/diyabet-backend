@@ -32,31 +32,52 @@ const YEREL_BESINLER = [
   { ai_etiketi: 'waffles', turkce_isim: 'Waffle', karbonhidrat_miktari: 33 }
 ];
 
-// Kullanılacak Gemini modeli
-const MODEL_ADI = 'gemini-3.8-flash';
-// Gemini yoğunken (503) sonuç alana kadar aynı modeli en fazla bu kadar kez dener
-const DENEME_SAYISI = 6;
-const MODELLER = Array(DENEME_SAYISI).fill(MODEL_ADI);
+// En hızlı (düşük gecikmeli) modelden başlayarak yedekli model zinciri
+const MODELLER = [
+  'gemini-3.5-flash-lite',
+  'gemini-3.8-flash',
+  'gemini-3.5-flash'
+];
 
-// Gemini'yi çağırır; hata (503 yoğunluk, 429 limit vb.) olursa listedeki sıradaki denemeye geçer.
-// Süre sınırı yoktur: Gemini yavaş da olsa cevabı bekler.
+// Tek bir model çağrısının sonsuza dek asılı kalmasını önleyen zaman aşımı yardımcısı
+function zamanAsimliCalistir(promise, sureMs = 12000) {
+    return Promise.race([
+        promise,
+        new Promise((_, reject) =>
+            setTimeout(() => reject(new Error(`Gemini zaman aşımı (${sureMs} ms)`)), sureMs)
+        )
+    ]);
+}
+
+// Hızlı model zinciriyle Gemini'yi çağırır; biri yoğun/yavaşsa beklemeden diğerine geçer
 async function geminiDene(modeller, icerik) {
     let sonHata;
     for (let i = 0; i < modeller.length; i++) {
         const baslangic = Date.now();
         try {
-            const model = genAI.getGenerativeModel({ model: modeller[i] });
-            const sonuc = await model.generateContent(icerik);
+            const model = genAI.getGenerativeModel({
+                model: modeller[i],
+                generationConfig: {
+                    responseMimeType: 'application/json',
+                    temperature: 0.2
+                }
+            });
+            const sonuc = await zamanAsimliCalistir(model.generateContent(icerik), 12000);
             console.log(`⏱️ Gemini (${modeller[i]}) cevap süresi: ${Date.now() - baslangic} ms`);
             return sonuc;
         } catch (error) {
             sonHata = error;
             console.log(`⚠️ Gemini denemesi ${i + 1}/${modeller.length} (${modeller[i]}) başarısız (${Date.now() - baslangic} ms): ${error.message.slice(0, 150)}`);
-            if (i < modeller.length - 1) await new Promise(r => setTimeout(r, 3000));
+            if (i < modeller.length - 1) await new Promise(r => setTimeout(r, 400));
         }
     }
     throw sonHata;
 }
+
+// Sağlık kontrolü (API Gateway uyandırma isteği için)
+app.get('/', (req, res) => {
+    res.json({ durum: 'aktif', servis: 'Goruntu ve Ses Analiz Servisi' });
+});
 
 app.post('/isleme', upload.single('file'), async (req, res) => {
     if (!req.file) return res.status(400).json({ hata: 'Lütfen bir fotoğraf gönderin.' });
@@ -196,4 +217,5 @@ Sözde hiçbir yemek yoksa şunu döndür: {"bulunamadi": true}`;
     }
 });
 
-app.listen(3001, () => console.log('📷 Akıllı Hibrit Görüntü Servisi 3001 portunda ayakta.'));
+const PORT = process.env.PORT || 3001;
+app.listen(PORT, '0.0.0.0', () => console.log(`📷 Akıllı Hibrit Görüntü Servisi ${PORT} portunda ayakta.`));
