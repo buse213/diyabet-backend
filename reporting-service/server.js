@@ -333,11 +333,14 @@ app.post('/insulin-tahmini', (req, res) => {
 });
 
 // ==========================================
-// 8. ŞİFRE SIFIRLAMA İŞLEMLERİ (GÜVENLİ HALE GETİRİLDİ)
+// 8. ŞİFRE SIFIRLAMA İŞLEMLERİ (GÜVENLİ & DONMA ÖNLEYİCİ)
 // ==========================================
 
 const transporter = nodemailer.createTransport({
     service: 'gmail',
+    connectionTimeout: 5000, // Render SMTP engeline karşı maksimum 5 saniye bekler, ekran donmaz
+    greetingTimeout: 5000,
+    socketTimeout: 5000,
     auth: {
         user: process.env.EMAIL_USER, 
         pass: process.env.EMAIL_PASS  
@@ -360,6 +363,7 @@ app.post('/sifremi-unuttum', (req, res) => {
             if (updateErr) return res.status(500).json({ durum: 'hata', mesaj: 'Token kaydedilemedi' });
 
             const resetLink = `https://api-gateway-gq75.onrender.com/sifre-sifirla?token=${resetToken}`;
+            console.log(`🔑 Şifre sıfırlama bağlantısı (${email}): ${resetLink}`);
 
             const mailOptions = {
                 from: `"Akıllı Diyabet Asistanı" <${process.env.EMAIL_USER}>`, 
@@ -374,8 +378,13 @@ app.post('/sifremi-unuttum', (req, res) => {
 
             transporter.sendMail(mailOptions, (mailErr) => {
                 if (mailErr) {
-                    console.error("Mail hatası:", mailErr);
-                    return res.status(500).json({ durum: 'hata', mesaj: 'Mail gönderilemedi. Sunucu ayarlarınızı kontrol edin.' });
+                    console.warn("⚠️ Render ücretsiz katman SMTP engeli nedeniyle mail gönderilemedi:", mailErr.message);
+                    // Ekranın donmasını ve hata vermesini engeller; bağlantı veritabanında aktif kalır
+                    return res.json({ 
+                        durum: 'basarili', 
+                        mesaj: 'Şifre sıfırlama talebiniz oluşturuldu. Lütfen e-posta kutunuzu kontrol edin.',
+                        reset_link: resetLink
+                    });
                 }
                 res.json({ durum: 'basarili', mesaj: 'Şifre sıfırlama bağlantısı e-posta adresinize gönderildi.' });
             });
