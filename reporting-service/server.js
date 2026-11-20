@@ -333,19 +333,8 @@ app.post('/insulin-tahmini', (req, res) => {
 });
 
 // ==========================================
-// 8. ŞİFRE SIFIRLAMA İŞLEMLERİ (GÜVENLİ & DONMA ÖNLEYİCİ)
+// 8. ŞİFRE SIFIRLAMA İŞLEMLERİ (BREVO HTTP API İLE GERÇEK MAİL)
 // ==========================================
-
-const transporter = nodemailer.createTransport({
-    service: 'gmail',
-    connectionTimeout: 5000, // Render SMTP engeline karşı maksimum 5 saniye bekler, ekran donmaz
-    greetingTimeout: 5000,
-    socketTimeout: 5000,
-    auth: {
-        user: process.env.EMAIL_USER, 
-        pass: process.env.EMAIL_PASS  
-    }
-});
 
 app.post('/sifremi-unuttum', (req, res) => {
     const { email } = req.body;
@@ -359,39 +348,49 @@ app.post('/sifremi-unuttum', (req, res) => {
         const expireDate = new Date(Date.now() + 3600000); // 1 saat geçerli
 
         const updateQuery = `UPDATE kullanicilar SET reset_token = ?, reset_token_expires = ? WHERE email = ?`;
-        db.query(updateQuery, [resetToken, expireDate, email], (updateErr) => {
+        db.query(updateQuery, [resetToken, expireDate, email], async (updateErr) => {
             if (updateErr) return res.status(500).json({ durum: 'hata', mesaj: 'Token kaydedilemedi' });
 
             const resetLink = `https://api-gateway-gq75.onrender.com/sifre-sifirla?token=${resetToken}`;
-            console.log(`🔑 Şifre sıfırlama bağlantısı (${email}): ${resetLink}`);
 
-            const mailOptions = {
-                from: `"Akıllı Diyabet Asistanı" <${process.env.EMAIL_USER}>`, 
-                to: email,
-                subject: 'Şifre Sıfırlama Talebi',
-                html: `
-                    <h3>Şifre Sıfırlama Talebi</h3>
-                    <p>Yeni şifre belirlemek için aşağıdaki bağlantıya tıklayın. Bu bağlantı 1 saat boyunca geçerlidir.</p>
-                    <a href="${resetLink}" style="display: inline-block; padding: 10px 20px; background-color: #8E24AA; color: white; text-decoration: none; border-radius: 5px;">Şifremi Sıfırla</a>
-                `
-            };
+            try {
+                const mailYanit = await fetch('https://api.brevo.com/v3/smtp/email', {
+                    method: 'POST',
+                    headers: {
+                        'accept': 'application/json',
+                        'api-key': process.env.BREVO_API_KEY,
+                        'content-type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        sender: {
+                            name: 'Akıllı Diyabet Asistanı',
+                            email: process.env.EMAIL_USER
+                        },
+                        to: [{ email: email }],
+                        subject: 'Şifre Sıfırlama Talebi',
+                        htmlContent: `
+                            <h3>Şifre Sıfırlama Talebi</h3>
+                            <p>Yeni şifre belirlemek için aşağıdaki bağlantıya tıklayın. Bu bağlantı 1 saat boyunca geçerlidir.</p>
+                            <a href="${resetLink}" style="display: inline-block; padding: 10px 20px; background-color: #8E24AA; color: white; text-decoration: none; border-radius: 5px;">Şifremi Sıfırla</a>
+                        `
+                    })
+                });
 
-            transporter.sendMail(mailOptions, (mailErr) => {
-                if (mailErr) {
-                    console.warn("⚠️ Render ücretsiz katman SMTP engeli nedeniyle mail gönderilemedi:", mailErr.message);
-                    // Ekranın donmasını ve hata vermesini engeller; bağlantı veritabanında aktif kalır
-                    return res.json({ 
-                        durum: 'basarili', 
-                        mesaj: 'Şifre sıfırlama talebiniz oluşturuldu. Lütfen e-posta kutunuzu kontrol edin.',
-                        reset_link: resetLink
-                    });
+                if (!mailYanit.ok) {
+                    const hataDetay = await mailYanit.text();
+                    console.error("❌ Brevo Mail Hatası:", hataDetay);
+                    return res.status(500).json({ durum: 'hata', mesaj: 'E-posta gönderilemedi. Lütfen ayarları kontrol edin.' });
                 }
+
+                console.log(`✅ Şifre sıfırlama maili gönderildi: ${email}`);
                 res.json({ durum: 'basarili', mesaj: 'Şifre sıfırlama bağlantısı e-posta adresinize gönderildi.' });
-            });
+            } catch (mailErr) {
+                console.error("❌ Mail servisi bağlantı hatası:", mailErr);
+                res.status(500).json({ durum: 'hata', mesaj: 'Mail servisine ulaşılamadı.' });
+            }
         });
     });
 });
-
 app.get('/sifre-sifirla', (req, res) => {
     const { token } = req.query;
 
