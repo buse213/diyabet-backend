@@ -280,8 +280,8 @@ app.post('/insulin-tahmini', (req, res) => {
             return res.status(500).json({ durum: 'hata', mesaj: 'Kullanıcı profil parametreleri alınamadı.' });
         }
 
-        const kullaniciIcr = (userResults.length > 0 && userResults[0].icr) ? parseFloat(userResults[0].icr) : 12.0;
-        const kullaniciIsf = (userResults.length > 0 && userResults[0].isf) ? parseFloat(userResults[0].isf) : 40.0;
+   const kullaniciIcr = (userResults.length > 0 && userResults[0].icr) ? parseFloat(userResults[0].icr) : 15.0;
+        const kullaniciIsf = (userResults.length > 0 && userResults[0].isf) ? parseFloat(userResults[0].isf) : 50.0;
 
         const query = `
             SELECT alinan_karbonhidrat, olculen_kan_sekeri, onerilen_insulin 

@@ -39,13 +39,13 @@ def predict():
         anlik_seker = float(data.get("anlik_seker", 100))
         guncel_karb = float(data.get("guncel_karbonhidrat", 0))
         
-        # Hastanın kişisel ICR ve ISF değerlerini al (boş/geçersizse varsayılan 12 ve 40)
-        icr = float(data.get("icr") or 12.0)
-        isf = float(data.get("isf") or 40.0)
+        # Mobil uygulama ile aynı varsayılan değerler (ICR = 15, ISF = 50)
+        icr = float(data.get("icr") or 15.0)
+        isf = float(data.get("isf") or 50.0)
         if icr <= 0:
-            icr = 12.0
+            icr = 15.0
         if isf <= 0:
-            isf = 40.0
+            isf = 50.0
 
         # 1. Geçmiş Verileri Zaman Serisi Sekansına Çevir
         sekans = []
@@ -81,9 +81,9 @@ def predict():
         dummy_row = np.array([[0, 0, scaled_gelecek_seker]])
         gelecek_seker_mgdl = float(scaler.inverse_transform(dummy_row)[0][2])
 
-        # 4. Kişisel ISF ve LSTM Glikoz Trendine Göre Düzeltme Dozu
+        # 4. Mobil ile aynı mantık: Hedef (120) üzerindeki her değer için pürüzsüz düzeltme dozu
         hedef_seker = 120.0
-        if gelecek_seker_mgdl > 140:
+        if gelecek_seker_mgdl > hedef_seker:
             ekstra_doz = (gelecek_seker_mgdl - hedef_seker) / isf
             onerilen_insulin = tahmini_guncel_insulin + ekstra_doz
         else:
