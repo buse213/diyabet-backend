@@ -1,21 +1,22 @@
 const express = require('express');
 const cors = require('cors');
 const mysql = require('mysql2');
-const path = require('path');
-const nodemailer = require('nodemailer'); 
-const crypto = require('crypto');        
+const crypto = require('crypto');
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// --- MYSQL VERİTABANI BAĞLANTISI ---
-const db = mysql.createConnection({
+// --- MYSQL VERİTABANI BAĞLANTI HAVUZU (POOL) ---
+const db = mysql.createPool({
     host: process.env.DB_HOST || 'localhost',
     user: process.env.DB_USER || 'root',
     password: process.env.DB_PASSWORD || '',
     database: process.env.DB_NAME || 'diyabet_tez_db',
-    port: process.env.DB_PORT || 3306
+    port: process.env.DB_PORT || 3306,
+    waitForConnections: true,
+    connectionLimit: 10,
+    queueLimit: 0
 });
 
 // ==========================================
@@ -44,10 +45,11 @@ function sifreSutunuKontrolEt() {
     });
 }
 
-db.connect((err) => {
-    if (err) console.error('MySQL bağlantı hatası:', err);
+db.getConnection((err, connection) => {
+    if (err) console.error('MySQL bağlantı havuzu hatası:', err);
     else {
-        console.log('MySQL veritabanına başarıyla bağlanıldı!');
+        console.log('MySQL veritabanı bağlantı havuzu başarıyla oluşturuldu!');
+        connection.release();
         sifreSutunuKontrolEt();
     }
 });
@@ -99,7 +101,6 @@ app.post('/kayit', (req, res) => {
         return res.status(400).json({ durum: 'hata', mesaj: 'Ad, e-posta ve şifre zorunludur.' });
     }
 
-    // Şifre uzunluk kontrolü eklendi
     if (sifre.length < 6 || sifre.length > 50) {
         return res.status(400).json({ durum: 'hata', mesaj: 'Şifreniz en az 6, en fazla 50 karakter uzunluğunda olmalıdır.' });
     }
@@ -107,7 +108,7 @@ app.post('/kayit', (req, res) => {
     const checkQuery = `SELECT * FROM kullanicilar WHERE email = ?`;
     db.query(checkQuery, [email], (err, results) => {
         if (err) return res.status(500).json({ durum: 'hata', mesaj: 'Veritabanı hatası' });
-        
+
         if (results.length > 0) {
             return res.status(400).json({ durum: 'hata', mesaj: 'Bu e-posta zaten kayıtlı!' });
         }
@@ -153,13 +154,11 @@ app.post('/giris', (req, res) => {
                 return res.status(401).json({ durum: 'hata', mesaj: 'E-posta veya şifre hatalı' });
             }
 
-            // Telefona şifre ve sıfırlama bilgilerini göndermiyoruz
             const gonder = () => {
                 const { sifre: _gizli, reset_token, reset_token_expires, ...temizKullanici } = kullanici;
                 res.json({ durum: 'basarili', mesaj: 'Giriş başarılı', kullanici: temizKullanici });
             };
 
-            // Eski düz metin şifre başarılı girişte otomatik olarak hash'e yükseltilir
             const hashliMi = String(kullanici.sifre).startsWith(SCRYPT_ONEKI);
             if (hashlemeAktif && !hashliMi) {
                 sifreHashle(sifre, (hashErr, hashli) => {
@@ -182,9 +181,9 @@ app.post('/giris', (req, res) => {
 // ==========================================
 app.post('/kaydet', (req, res) => {
     const { email, yemek_ismi, tuketilen_gramaj, alinan_karbonhidrat, olculen_kan_sekeri, onerilen_insulin } = req.body;
-    
+
     const query = `INSERT INTO gecmis_kayitlar (email, yemek_ismi, tuketilen_gramaj, alinan_karbonhidrat, olculen_kan_sekeri, onerilen_insulin) VALUES (?, ?, ?, ?, ?, ?)`;
-    
+
     db.query(query, [email, yemek_ismi, tuketilen_gramaj, alinan_karbonhidrat, olculen_kan_sekeri, onerilen_insulin], (err, results) => {
         if (err) {
             console.error("Veritabanı kayıt hatası:", err);
@@ -199,14 +198,14 @@ app.post('/kaydet', (req, res) => {
 // 4. GEÇMİŞİ LİSTELE
 // ==========================================
 app.get('/gecmis', (req, res) => {
-    const { email } = req.query; 
-    
+    const { email } = req.query;
+
     if (!email) {
         return res.status(400).json({ durum: 'hata', mesaj: 'Email parametresi eksik' });
     }
 
     const query = 'SELECT * FROM gecmis_kayitlar WHERE email = ? ORDER BY tarih DESC';
-    
+
     db.query(query, [email], (err, results) => {
         if (err) {
             console.error("Geçmiş çekilirken hata:", err);
@@ -223,7 +222,7 @@ app.post('/profil-guncelle', (req, res) => {
     const { email, ad, yas, kilo, diyabet_yili, icr, isf } = req.body;
 
     const query = `UPDATE kullanicilar SET ad=?, yas=?, kilo=?, diyabet_yili=?, icr=?, isf=? WHERE email=?`;
-    
+
     db.query(query, [ad, yas, kilo, diyabet_yili, icr, isf, email], (err, results) => {
         if (err) {
             console.error("Profil güncelleme hatası:", err);
@@ -237,7 +236,7 @@ app.post('/profil-guncelle', (req, res) => {
 // 6. SIK TÜKETİLENLERİ GETİR
 // ==========================================
 app.get('/sik-tuketilenler', (req, res) => {
-    const { email } = req.query; 
+    const { email } = req.query;
 
     if (!email) {
         return res.status(400).json({ durum: 'hata', mesaj: 'Email parametresi eksik' });
@@ -254,7 +253,7 @@ app.get('/sik-tuketilenler', (req, res) => {
         ORDER BY tuketim_sayisi DESC 
         LIMIT 5
     `;
-    
+
     db.query(sql, [email], (err, results) => {
         if (err) {
             console.error("Sık tüketilenleri çekerken hata:", err);
@@ -265,7 +264,7 @@ app.get('/sik-tuketilenler', (req, res) => {
 });
 
 // ==========================================
-// 7. YAPAY ZEKA İNSÜLİN VE GLİKOZ TAHMİNİ
+// 7. YAPAY ZEKA İNSÜLİN VE GLİKOZ TAHMİNİ (KİŞİSEL ICR/ISF DESTEKLİ)
 // ==========================================
 app.post('/insulin-tahmini', (req, res) => {
     const { email, anlik_seker, guncel_karbonhidrat } = req.body;
@@ -274,68 +273,80 @@ app.post('/insulin-tahmini', (req, res) => {
         return res.status(400).json({ durum: 'hata', mesaj: 'Eksik veri gönderildi.' });
     }
 
-    const query = `
-        SELECT alinan_karbonhidrat, olculen_kan_sekeri, onerilen_insulin 
-        FROM gecmis_kayitlar 
-        WHERE email = ? 
-        ORDER BY tarih DESC 
-        LIMIT 5
-    `;
-
-    db.query(query, [email], async (err, results) => {
-        if (err) {
-            console.error("Veritabanı hatası:", err);
-            return res.status(500).json({ durum: 'hata', mesaj: 'Geçmiş veriler alınamadı.' });
+    const userQuery = `SELECT icr, isf FROM kullanicilar WHERE email = ?`;
+    db.query(userQuery, [email], (userErr, userResults) => {
+        if (userErr) {
+            console.error("Kullanıcı ICR/ISF sorgu hatası:", userErr);
+            return res.status(500).json({ durum: 'hata', mesaj: 'Kullanıcı profil parametreleri alınamadı.' });
         }
 
-        const gecmisVeriler = results.reverse(); 
-        const pythonVerisi = {
-            gecmis_veriler: gecmisVeriler,
-            anlik_seker: parseFloat(anlik_seker),
-            guncel_karbonhidrat: parseFloat(guncel_karbonhidrat)
-        };
+        const kullaniciIcr = (userResults.length > 0 && userResults[0].icr) ? parseFloat(userResults[0].icr) : 12.0;
+        const kullaniciIsf = (userResults.length > 0 && userResults[0].isf) ? parseFloat(userResults[0].isf) : 40.0;
 
-        try {
-            const pythonApiLink = 'https://lstm-api-service.onrender.com/predict';
-            
-            const aiResponse = await fetch(pythonApiLink, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(pythonVerisi)
-            });
+        const query = `
+            SELECT alinan_karbonhidrat, olculen_kan_sekeri, onerilen_insulin 
+            FROM gecmis_kayitlar 
+            WHERE email = ? 
+            ORDER BY tarih DESC 
+            LIMIT 5
+        `;
 
-            const responseText = await aiResponse.text();
+        db.query(query, [email], async (err, results) => {
+            if (err) {
+                console.error("Veritabanı hatası:", err);
+                return res.status(500).json({ durum: 'hata', mesaj: 'Geçmiş veriler alınamadı.' });
+            }
 
-            if (responseText.includes("<!DOCTYPE") || responseText.includes("<html")) {
-                return res.status(503).json({ 
-                    durum: 'hata', 
-                    mesaj: 'Yapay zeka motoru uyku modundan uyanıyor. Lütfen 30-40 saniye bekleyip tekrar deneyin.' 
+            const gecmisVeriler = results.reverse();
+            const pythonVerisi = {
+                gecmis_veriler: gecmisVeriler,
+                anlik_seker: parseFloat(anlik_seker),
+                guncel_karbonhidrat: parseFloat(guncel_karbonhidrat),
+                icr: kullaniciIcr,
+                isf: kullaniciIsf
+            };
+
+            try {
+                const pythonApiLink = 'https://lstm-api-service.onrender.com/predict';
+
+                const aiResponse = await fetch(pythonApiLink, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(pythonVerisi)
                 });
+
+                const responseText = await aiResponse.text();
+
+                if (responseText.includes("<!DOCTYPE") || responseText.includes("<html")) {
+                    return res.status(503).json({
+                        durum: 'hata',
+                        mesaj: 'Yapay zeka motoru uyku modundan uyanıyor. Lütfen 30-40 saniye bekleyip tekrar deneyin.'
+                    });
+                }
+
+                const pythonSonuc = JSON.parse(responseText);
+
+                if (pythonSonuc.error) {
+                    return res.status(500).json({ durum: 'hata', mesaj: pythonSonuc.error });
+                }
+
+                return res.json({
+                    durum: 'basarili',
+                    kaynak: 'LSTM Yapay Zeka Modeli',
+                    analiz_sonucu: pythonSonuc
+                });
+
+            } catch (error) {
+                console.error("Python API İstek Hatası:", error);
+                return res.status(500).json({ durum: 'hata', mesaj: 'Yapay zeka servisine ulaşılamadı.' });
             }
-
-            const pythonSonuc = JSON.parse(responseText);
-
-            if (pythonSonuc.error) {
-                return res.status(500).json({ durum: 'hata', mesaj: pythonSonuc.error });
-            }
-
-            return res.json({
-                durum: 'basarili',
-                kaynak: 'LSTM Yapay Zeka Modeli',
-                analiz_sonucu: pythonSonuc
-            });
-
-        } catch (error) {
-            console.error("Python API İstek Hatası:", error);
-            return res.status(500).json({ durum: 'hata', mesaj: 'Yapay zeka servisine ulaşılamadı.' });
-        }
+        });
     });
 });
 
 // ==========================================
 // 8. ŞİFRE SIFIRLAMA İŞLEMLERİ (BREVO HTTP API İLE GERÇEK MAİL)
 // ==========================================
-
 app.post('/sifremi-unuttum', (req, res) => {
     const { email } = req.body;
 
@@ -391,6 +402,7 @@ app.post('/sifremi-unuttum', (req, res) => {
         });
     });
 });
+
 app.get('/sifre-sifirla', (req, res) => {
     const { token } = req.query;
 
@@ -428,7 +440,6 @@ app.post('/sifre-guncelle', express.urlencoded({ extended: true }), (req, res) =
         return res.send('<h2 style="color: red; text-align: center; margin-top: 50px;">İşlem başarısız. Eksik bilgi gönderildi.</h2>');
     }
 
-    // Şifre uzunluk kontrolü eklendi
     if (yeniSifre.length < 6 || yeniSifre.length > 50) {
         return res.send('<h2 style="color: red; text-align: center; margin-top: 50px;">Şifreniz en az 6, en fazla 50 karakter olmalıdır! Lütfen geri dönüp tekrar deneyin.</h2>');
     }
@@ -440,7 +451,7 @@ app.post('/sifre-guncelle', express.urlencoded({ extended: true }), (req, res) =
         }
 
         const query = `UPDATE kullanicilar SET sifre = ?, reset_token = NULL, reset_token_expires = NULL WHERE reset_token = ? AND reset_token_expires > NOW()`;
-        
+
         db.query(query, [saklanacakSifre, token], (err, result) => {
             if (err || result.affectedRows === 0) {
                 return res.send('<h2 style="color: red; text-align: center; margin-top: 50px;">İşlem başarısız. Bağlantı süresi dolmuş olabilir.</h2>');

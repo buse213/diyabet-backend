@@ -7,7 +7,6 @@ import pickle
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 
-# Modeli Yüklemek İçin Sınıfı Tekrar Tanımlamalıyız
 class DiabetesLSTM(nn.Module):
     def __init__(self):
         super().__init__()
@@ -22,8 +21,6 @@ class DiabetesLSTM(nn.Module):
 app = Flask(__name__)
 CORS(app)
 
-# KRİTİK DEĞİŞİKLİK: Model ve Scaler sunucu başlarken SADECE BİR KERE RAM'e yüklenir.
-# Bu sayede her analizde yeniden yüklenmez ve hafıza şişmez.
 print("Yapay Zeka Modeli Yükleniyor...")
 model = DiabetesLSTM()
 model.load_state_dict(torch.load('lstm_model.pt', map_location=torch.device('cpu')))
@@ -36,14 +33,21 @@ print("Model ve Scaler başarıyla yüklendi, API dinlemeye hazır!")
 @app.route('/predict', methods=['POST'])
 def predict():
     try:
-        # 1. Node.js'ten gelen veriyi HTTP Request içinden al
         data = request.json
         
         gecmis_veriler = data.get("gecmis_veriler", [])
-        anlik_seker = data.get("anlik_seker", 100)
-        guncel_karb = data.get("guncel_karbonhidrat", 0)
+        anlik_seker = float(data.get("anlik_seker", 100))
+        guncel_karb = float(data.get("guncel_karbonhidrat", 0))
+        
+        # Hastanın kişisel ICR ve ISF değerlerini al (boş/geçersizse varsayılan 12 ve 40)
+        icr = float(data.get("icr") or 12.0)
+        isf = float(data.get("isf") or 40.0)
+        if icr <= 0:
+            icr = 12.0
+        if isf <= 0:
+            isf = 40.0
 
-        # 2. Geçmiş Verileri Zaman Serisi Sekansına Çevir
+        # 1. Geçmiş Verileri Zaman Serisi Sekansına Çevir
         sekans = []
         for kayit in gecmis_veriler:
             sekans.append([
@@ -52,9 +56,9 @@ def predict():
                 float(kayit.get("olculen_kan_sekeri", 100))
             ])
         
-        # Güncel öğünü ekle
-        tahmini_guncel_insulin = guncel_karb / 12.0
-        sekans.append([float(guncel_karb), tahmini_guncel_insulin, float(anlik_seker)])
+        # Kişisel ICR değerine göre öğün bolusu
+        tahmini_guncel_insulin = guncel_karb / icr
+        sekans.append([guncel_karb, tahmini_guncel_insulin, anlik_seker])
 
         # LSTM 5 adımlık veri beklediği için tamamla
         while len(sekans) < 5:
@@ -65,29 +69,31 @@ def predict():
         
         sekans = sekans[-5:]
 
-        # 3. Veriyi Ölçeklendir ve PyTorch Tensörüne Çevir
+        # 2. Veriyi Ölçeklendir ve PyTorch Tensörüne Çevir
         df_sekans = pd.DataFrame(sekans, columns=['karbonhidrat', 'insulin', 'glikoz'])
         scaled_sekans = scaler.transform(df_sekans)
         X_tensor = torch.tensor([scaled_sekans], dtype=torch.float32)
 
-        # 4. GERÇEK YAPAY ZEKA TAHMİNİ (Forward Pass)
+        # 3. LSTM İleri Besleme Tahmini
         with torch.no_grad():
             scaled_gelecek_seker = model(X_tensor).item()
 
         dummy_row = np.array([[0, 0, scaled_gelecek_seker]])
         gelecek_seker_mgdl = float(scaler.inverse_transform(dummy_row)[0][2])
 
-        # 5. Trende Göre İnsülin Dozunu Düzelt
+        # 4. Kişisel ISF ve LSTM Glikoz Trendine Göre Düzeltme Dozu
+        hedef_seker = 120.0
         if gelecek_seker_mgdl > 140:
-            ekstra_doz = (gelecek_seker_mgdl - 140) / 40.0
+            ekstra_doz = (gelecek_seker_mgdl - hedef_seker) / isf
             onerilen_insulin = tahmini_guncel_insulin + ekstra_doz
         else:
             onerilen_insulin = tahmini_guncel_insulin
 
-        # 6. Sonucu JSON formatında Node.js'e geri dön
         return jsonify({
             "gelecekteki_seker": round(gelecek_seker_mgdl, 1),
-            "onerilen_insulin": round(max(0, onerilen_insulin), 1)
+            "onerilen_insulin": round(max(0, onerilen_insulin), 1),
+            "kullanilan_icr": icr,
+            "kullanilan_isf": isf
         })
 
     except Exception as e:

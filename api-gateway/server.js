@@ -158,6 +158,16 @@ app.post('/sesli-analiz', async (req, res) => {
     }
 });
 
+// 10. YAPAY ZEKA İNSÜLİN VE GLİKOZ TAHMİNİ (SOA GATEWAY YÖNLENDİRMESİ)
+app.post('/insulin-tahmini', async (req, res) => {
+    try {
+        const response = await axios.post(`${REPORTING_SERVICE_URL}/insulin-tahmini`, req.body);
+        res.json(response.data);
+    } catch (error) {
+        if (error.response && error.response.data) return res.status(error.response.status).json(error.response.data);
+        res.status(500).json({ durum: 'hata', mesaj: 'Yapay zeka analiz servisine ulaşılamadı.' });
+    }
+});
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 API Gateway ${PORT} portunda aktif. Tüm istekler buradan yönetiliyor.`);
